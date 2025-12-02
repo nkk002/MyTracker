@@ -102,7 +102,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             when (item.itemId) {
                 R.id.nav_home -> {
                     if (::map.isInitialized) {
-                        // 点击 Home 回到吉隆坡中心
+                        //点击 Home 回到吉隆坡中心
                         val cityCenter = LatLng(3.1579, 101.7123)
                         map.animateCamera(CameraUpdateFactory.newLatLngZoom(cityCenter, 12f))
                     }
