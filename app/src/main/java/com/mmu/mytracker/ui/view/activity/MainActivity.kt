@@ -145,7 +145,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    // 保留这个函数作为工具，以后可以用它画用户搜索的路线
+    //保留这个函数作为工具，以后可以用它画用户搜索的路线
     private fun drawDemoRoute() {
         lifecycleScope.launch {
             val origin = "KL Sentral"
