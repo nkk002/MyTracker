@@ -64,10 +64,18 @@ class SearchActivity : AppCompatActivity() {
 
         setupRecyclerView()
         setupFakeSearchBar()
+        setupBackButton()
 
         // 2. 核心逻辑：如果是第一次进入页面，自动弹出搜索框！
         if (savedInstanceState == null) {
             startGoogleSearch()
+        }
+    }
+
+    private fun setupBackButton() {
+        val btnBack = findViewById<android.widget.ImageButton>(R.id.btnBack)
+        btnBack.setOnClickListener {
+            finish() // 关闭当前页面，返回上一页 (Homepage)
         }
     }
 
