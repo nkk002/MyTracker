@@ -60,40 +60,43 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     /**
      * 设置顶部的搜索栏功能
      */
-    private fun setupAutocompleteFragment() {
-        // 这里的 R.id.autocomplete_fragment 必须在 activity_main.xml 里存在
-        val autocompleteFragment = supportFragmentManager.findFragmentById(R.id.autocomplete_fragment)
-                as? AutocompleteSupportFragment?: return
+    // 在 MainActivity 类中
 
-        // 限制搜索范围为马来西亚 (MY)，这样搜巴士站更准
-        // 使用 setCountries 并传入一个列表
-        autocompleteFragment.setCountries(listOf("MY"))
+// 定义一个 Launcher 来接收结果
+    private val searchLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val lat = data?.getDoubleExtra("selected_lat", 0.0)
+            val lng = data?.getDoubleExtra("selected_lng", 0.0)
+            val name = data?.getStringExtra("selected_name")
 
-        // 设定我们需要获取的数据：地点ID，名字，经纬度
-        autocompleteFragment.setPlaceFields(listOf(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG))
-
-        // 监听用户选中的地点
-        autocompleteFragment.setOnPlaceSelectedListener(object : PlaceSelectionListener {
-            override fun onPlaceSelected(place: Place) {
-                // 用户选中地点后：
-                place.latLng?.let { latLng ->
-                    // 1. 移动镜头
-                    map.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f))
-
-                    // 2. 清除旧标记并添加新标记
-                    map.clear()
-                    map.addMarker(MarkerOptions().position(latLng).title(place.name))
-
-                    // 3. (可选) 如果你想自动画路线，可以在这里调用 drawRouteTo(latLng)
-                    // 目前我们仅显示标记
-                }
+            if (lat != null && lng != null && lat != 0.0) {
+                val location = LatLng(lat, lng)
+                map.animateCamera(CameraUpdateFactory.newLatLngZoom(location, 15f))
+                map.clear()
+                map.addMarker(MarkerOptions().position(location).title(name))
             }
+        }
+    }
 
-            override fun onError(status: Status) {
-                Log.e("Search", "Search error: $status")
-                Toast.makeText(this@MainActivity, "Search error: ${status.statusMessage}", Toast.LENGTH_SHORT).show()
-            }
-        })
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        // ... 其他初始化代码 ...
+
+        // 替换掉原来的 setupAutocompleteFragment()
+        setupFakeSearchBar()
+    }
+
+    private fun setupFakeSearchBar() {
+        val fakeSearch = findViewById<TextView>(R.id.tvFakeSearch)
+        fakeSearch.setOnClickListener {
+            val intent = Intent(this, SearchActivity::class.java)
+            searchLauncher.launch(intent)
+        }
     }
 
     private fun setupBottomNavigation() {
