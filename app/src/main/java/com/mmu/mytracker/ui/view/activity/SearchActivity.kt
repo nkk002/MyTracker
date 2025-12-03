@@ -99,29 +99,61 @@ class SearchActivity : AppCompatActivity() {
 
     // 3. 启动 Google 全屏搜索界面的方法
     private fun startGoogleSearch() {
-        // 设置我们需要获取的字段
-        val fields = listOf(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG, Place.Field.ADDRESS)
+        // 1. 重要：必须增加 Place.Field.TYPES 字段，否则拿不到地点类型
+        val fields = listOf(
+            Place.Field.ID,
+            Place.Field.NAME,
+            Place.Field.LAT_LNG,
+            Place.Field.ADDRESS,
+            Place.Field.TYPES // <--- 新增这个
+        )
 
         // 构建 Intent
         val intent = Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
-            .setCountries(listOf("MY")) // 限制搜索范围为马来西亚
+            .setCountries(listOf("MY")) // 限制马来西亚
+            // 尝试过滤：虽然 Google 不保证 100% 只显示车站，但这会提高车站的优先级
+            // 注意：Android SDK 对这里支持的过滤器有限，主要靠后面的“验证”步骤
+            // .setTypesFilter(listOf("transit_station"))
             .build(this)
 
         autocompleteLauncher.launch(intent)
     }
 
     private fun handleSelectedPlace(place: Place) {
-        // 保存到历史记录
-        val recent = RecentPlace(
-            name = place.name ?: "Unknown",
-            address = place.address ?: "",
-            lat = place.latLng?.latitude ?: 0.0,
-            lng = place.latLng?.longitude ?: 0.0
+        // 1. 使用字符串定义我们接受的交通站点类型 (新版写法)
+        // 这些是 Google Places API 标准的类型字符串
+        val validTransportTypes = setOf(
+            "transit_station",      // 公共交通站点 (核心)
+            "bus_station",          // 巴士站
+            "train_station",        // 火车站
+            "subway_station",       // 地铁站
+            "light_rail_station",   // 轻轨站
+            "monorail_station"      // 单轨站 (KL Monorail 需要这个)
         )
-        historyManager.savePlace(recent)
 
-        // 返回结果给 MainActivity
-        returnResult(recent.name, recent.lat, recent.lng)
+        // 2. 获取用户选中地点的类型列表 (使用 placeTypes 替代 types)
+        // 注意：place.placeTypes 返回的是 List<String>，所以不会报错
+        val placeTypes = place.placeTypes
+
+        // 3. 检查：选中的地点是否包含任何一个我们接受的类型？
+        val isValid = placeTypes?.any { it in validTransportTypes } == true
+
+        if (isValid) {
+            // --- 情况 A: 是车站 ---
+            val recent = RecentPlace(
+                name = place.name ?: "Unknown",
+                address = place.address ?: "",
+                lat = place.latLng?.latitude ?: 0.0,
+                lng = place.latLng?.longitude ?: 0.0
+            )
+            historyManager.savePlace(recent)
+            returnResult(recent.name, recent.lat, recent.lng)
+
+        } else {
+            // --- 情况 B: 是无关地点 ---
+            // 提示用户只能选车站
+            Toast.makeText(this, "Please select a valid Transport Station (Bus/MRT/LRT)", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun returnResult(name: String, lat: Double, lng: Double) {
