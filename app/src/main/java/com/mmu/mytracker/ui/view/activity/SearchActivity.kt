@@ -19,8 +19,8 @@ import com.mmu.mytracker.utils.SearchHistoryManager
 
 class SearchActivity : AppCompatActivity() {
 
-    private lateinit historyManager: SearchHistoryManager
-    private lateinit adapter: RecentSearchAdapter
+    private lateinit var historyManager: SearchHistoryManager
+    private lateinit var adapter: RecentSearchAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

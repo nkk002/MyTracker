@@ -1,16 +1,19 @@
 package com.mmu.mytracker.ui.view.activity
 
 import android.Manifest
+import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
+import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.google.android.gms.common.api.Status
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
@@ -19,9 +22,6 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.android.libraries.places.api.Places
-import com.google.android.libraries.places.api.model.Place
-import com.google.android.libraries.places.widget.AutocompleteSupportFragment
-import com.google.android.libraries.places.widget.listener.PlaceSelectionListener
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.maps.android.PolyUtil
 import com.mmu.mytracker.R
@@ -35,36 +35,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private val repository = TransportRepository()
     private val LOCATION_PERMISSION_REQUEST_CODE = 1001
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-
-        // 1. 初始化 Places SDK (用于搜索地址和巴士站)
-        val apiKey = getString(R.string.google_maps_key)
-        if (!Places.isInitialized()) {
-            Places.initialize(applicationContext, apiKey)
-        }
-
-        // 2. 设置搜索栏监听器
-        setupAutocompleteFragment()
-
-        // 3. 加载地图
-        val mapFragment = supportFragmentManager
-            .findFragmentById(R.id.mapFragment) as SupportMapFragment
-        mapFragment.getMapAsync(this)
-
-        // 4. 设置底部导航
-        setupBottomNavigation()
-    }
-
-    /**
-     * 设置顶部的搜索栏功能
-     */
-    // 在 MainActivity 类中
-
-// 定义一个 Launcher 来接收结果
+    // 定义 Launcher 来接收 SearchActivity 返回的结果 (地点名称和经纬度)
     private val searchLauncher = registerForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+        ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val data = result.data
@@ -74,7 +47,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
             if (lat != null && lng != null && lat != 0.0) {
                 val location = LatLng(lat, lng)
+                // 移动地图到选中的位置
                 map.animateCamera(CameraUpdateFactory.newLatLngZoom(location, 15f))
+                // 清除旧标记并添加新标记
                 map.clear()
                 map.addMarker(MarkerOptions().position(location).title(name))
             }
@@ -85,15 +60,31 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // ... 其他初始化代码 ...
+        // 1. 初始化 Places SDK
+        val apiKey = getString(R.string.google_maps_key)
+        if (!Places.isInitialized()) {
+            Places.initialize(applicationContext, apiKey)
+        }
 
-        // 替换掉原来的 setupAutocompleteFragment()
+        // 2. 设置伪装搜索栏 (点击跳转到 SearchActivity)
         setupFakeSearchBar()
+
+        // 3. 加载地图 Fragment
+        val mapFragment = supportFragmentManager
+            .findFragmentById(R.id.mapFragment) as SupportMapFragment
+        mapFragment.getMapAsync(this)
+
+        // 4. 设置底部导航栏
+        setupBottomNavigation()
     }
 
+    /**
+     * 设置“伪搜索栏”的点击事件
+     */
     private fun setupFakeSearchBar() {
         val fakeSearch = findViewById<TextView>(R.id.tvFakeSearch)
         fakeSearch.setOnClickListener {
+            // 跳转到真正的搜索页面
             val intent = Intent(this, SearchActivity::class.java)
             searchLauncher.launch(intent)
         }
@@ -106,7 +97,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             when (item.itemId) {
                 R.id.nav_home -> {
                     if (::map.isInitialized) {
-                        //点击 Home 回到吉隆坡中心
+                        // 点击 Home 回到吉隆坡中心 (或者改为回到用户当前位置)
                         val cityCenter = LatLng(3.1579, 101.7123)
                         map.animateCamera(CameraUpdateFactory.newLatLngZoom(cityCenter, 12f))
                     }
@@ -130,9 +121,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         map = googleMap
         enableMyLocation()
 
-        // 注意：我把 drawDemoRoute() 暂时注释掉了。
-        // 因为有了搜索栏，我们通常不希望一进来就画一条固定的线，而是等待用户搜索。
-        // drawDemoRoute()
+        // drawDemoRoute() // 暂时注释掉，等待用户搜索后再画线
     }
 
     private fun enableMyLocation() {
@@ -149,7 +138,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    //保留这个函数作为工具，以后可以用它画用户搜索的路线
+    // 保留这个函数作为工具，以后可以用它画用户搜索的路线
     private fun drawDemoRoute() {
         lifecycleScope.launch {
             val origin = "KL Sentral"
@@ -158,7 +147,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
             val encodedPolyline = repository.getRoutePolyline(origin, destination, apiKey)
 
-            if (encodedPolyline!= null) {
+            if (encodedPolyline != null) {
                 val pathPoints: List<LatLng> = PolyUtil.decode(encodedPolyline)
                 val polylineOptions = PolylineOptions()
                     .addAll(pathPoints)
@@ -181,7 +170,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.isNotEmpty() && grantResults[0]== PackageManager.PERMISSION_GRANTED) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 enableMyLocation()
             } else {
                 Toast.makeText(this, "Location permissions are required to use the map function.", Toast.LENGTH_SHORT).show()
