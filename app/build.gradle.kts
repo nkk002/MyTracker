@@ -11,7 +11,7 @@ plugins {
 
 android {
     namespace = "com.mmu.mytracker"
-    compileSdk = 34 // 针对Android 14编译
+    compileSdk = 35 // 针对Android 14编译
 
     defaultConfig {
         applicationId = "com.mmu.mytracker"

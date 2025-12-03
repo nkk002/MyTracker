@@ -66,7 +66,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 as? AutocompleteSupportFragment?: return
 
         // 限制搜索范围为马来西亚 (MY)，这样搜巴士站更准
-        autocompleteFragment.setCountry("MY")
+        // 使用 setCountries 并传入一个列表
+        autocompleteFragment.setCountries(listOf("MY"))
 
         // 设定我们需要获取的数据：地点ID，名字，经纬度
         autocompleteFragment.setPlaceFields(listOf(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG))
@@ -89,8 +90,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             }
 
             override fun onError(status: Status) {
-                Log.e("Search", "搜索出错: $status")
-                Toast.makeText(this@MainActivity, "搜索出错: ${status.statusMessage}", Toast.LENGTH_SHORT).show()
+                Log.e("Search", "Search error: $status")
+                Toast.makeText(this@MainActivity, "Search error: ${status.statusMessage}", Toast.LENGTH_SHORT).show()
             }
         })
     }
