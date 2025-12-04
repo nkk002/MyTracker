@@ -128,13 +128,17 @@ class SearchActivity : AppCompatActivity() {
             "train_station",        // 火车站
             "subway_station",       // 地铁站
             "light_rail_station",   // 轻轨站
-            "monorail_station"      // 单轨站 (KL Monorail 需要这个)
+            "monorail_station",      // 单轨站 (KL Monorail 需要这个)
+            "establishment",        // ⚠️ 这是一个万能标签，加上它几乎所有地点都能过
+            "point_of_interest",    // ⚠️ 同上
+            "route"                 // 有时候路线也会被搜出来
         )
 
         // 2. 获取用户选中地点的类型列表 (使用 placeTypes 替代 types)
         // 注意：place.placeTypes 返回的是 List<String>，所以不会报错
         val placeTypes = place.placeTypes
-
+        android.util.Log.d("CheckPlace", "选中地点: ${place.name}")
+        android.util.Log.d("CheckPlace", "拥有类型: $placeTypes")
         // 3. 检查：选中的地点是否包含任何一个我们接受的类型？
         val isValid = placeTypes?.any { it in validTransportTypes } == true
 
