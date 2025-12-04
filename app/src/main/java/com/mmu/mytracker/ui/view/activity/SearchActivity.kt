@@ -120,30 +120,45 @@ class SearchActivity : AppCompatActivity() {
     }
 
     private fun handleSelectedPlace(place: Place) {
-        // 1. 使用字符串定义我们接受的交通站点类型 (新版写法)
-        // 这些是 Google Places API 标准的类型字符串
-        val validTransportTypes = setOf(
-            "transit_station",      // 公共交通站点 (核心)
-            "bus_station",          // 巴士站
-            "train_station",        // 火车站
-            "subway_station",       // 地铁站
-            "light_rail_station",   // 轻轨站
-            "monorail_station",      // 单轨站 (KL Monorail 需要这个)
-            "establishment",        // ⚠️ 这是一个万能标签，加上它几乎所有地点都能过
-            "point_of_interest",    // ⚠️ 同上
-            "route"                 // 有时候路线也会被搜出来
+        val placeTypes = place.placeTypes ?: emptyList()
+        val placeName = place.name?.lowercase() ?: "" // 转成小写，方便比对
+
+        // ==========================================
+        // Functional Layer: 双重验证漏斗模型
+        // ==========================================
+
+        // 1. 第一层：白名单标签 (Explicit Types)
+        // 只要地点包含这些标签，直接放行 (Pass)
+        // 注意：这里移除了 'establishment' 和 'point_of_interest' 这种万能标签，只保留交通相关的
+        val strictTransportTypes = setOf(
+            "transit_station",
+            "bus_station",
+            "train_station",
+            "subway_station",
+            "light_rail_station",
+            "monorail_station"
         )
 
-        // 2. 获取用户选中地点的类型列表 (使用 placeTypes 替代 types)
-        // 注意：place.placeTypes 返回的是 List<String>，所以不会报错
-        val placeTypes = place.placeTypes
-        android.util.Log.d("CheckPlace", "选中地点: ${place.name}")
-        android.util.Log.d("CheckPlace", "拥有类型: $placeTypes")
-        // 3. 检查：选中的地点是否包含任何一个我们接受的类型？
-        val isValid = placeTypes?.any { it in validTransportTypes } == true
+        val hasExplicitType = placeTypes.any { it in strictTransportTypes }
 
-        if (isValid) {
-            // --- 情况 A: 是车站 ---
+        // 2. 第二层：关键词补救 (Keyword Rescue)
+        // 如果第一层没过（Google漏标了），检查名字里有没有这些词
+        val transportKeywords = listOf(
+            "mrt", "lrt", "ktm", "station", "stesen",
+            "sentral", "terminal", "hub", "komuter",
+            "bus stop", "hentian" // Hentian 也是车站常用词
+        )
+
+        val hasTransportKeyword = transportKeywords.any { keyword ->
+            placeName.contains(keyword)
+        }
+
+        // ==========================================
+        // 决策逻辑
+        // ==========================================
+
+        if (hasExplicitType || hasTransportKeyword) {
+            // 通过验证 (是车站，或者名字像车站)
             val recent = RecentPlace(
                 name = place.name ?: "Unknown",
                 address = place.address ?: "",
@@ -154,9 +169,19 @@ class SearchActivity : AppCompatActivity() {
             returnResult(recent.name, recent.lat, recent.lng)
 
         } else {
-            // --- 情况 B: 是无关地点 ---
-            // 提示用户只能选车站
-            Toast.makeText(this, "Please select a valid Transport Station (Bus/MRT/LRT)", Toast.LENGTH_LONG).show()
+            // 拦截 (既没有车站标签，名字也不像车站)
+
+            // 调试用：在 Logcat 里打印出来，看看是什么东西被拦截了
+            android.util.Log.d("CheckPlace", "拦截地点: ${place.name}, 类型: $placeTypes")
+
+            Toast.makeText(
+                this,
+                "Please select a valid Transport Station (Bus/MRT/LRT)",
+                Toast.LENGTH_LONG
+            ).show()
+
+            // 可选：如果被拦截了，自动重新弹起搜索框，让用户重选
+            // startGoogleSearch()
         }
     }
 
