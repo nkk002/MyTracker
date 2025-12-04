@@ -134,6 +134,7 @@ class SearchActivity : AppCompatActivity() {
 
     private fun handleSelectedPlace(place: Place) {
         val placeName = place.name ?: "Unknown"
+        android.util.Log.d("DEBUG_SEARCH", "Google 返回的名字是: $placeName") // <--- 加这一行
         val lat = place.latLng?.latitude ?: 0.0
         val lng = place.latLng?.longitude ?: 0.0
 
