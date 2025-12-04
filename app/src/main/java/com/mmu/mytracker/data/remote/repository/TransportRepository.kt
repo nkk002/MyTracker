@@ -123,4 +123,37 @@ class TransportRepository {
             null
         }
     }
+    // ... (现有的代码)
+
+    /**
+     * 实时监听特定路线的报告 (Waze-style Alert 核心)
+     * @param targetLine 用户当前关注的路线，例如 "MRT Kajang Line"
+     */
+    fun observeRealTimeReports(targetLine: String): Flow<Map<String, Any>?> = callbackFlow {
+        // 只监听最近 30 分钟内的报告 (避免旧新闻弹出)
+        val thirtyMinsAgo = System.currentTimeMillis() - (30 * 60 * 1000)
+
+        val query = reportsRef.orderByChild("timestamp").startAt(thirtyMinsAgo.toDouble())
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                for (child in snapshot.children) {
+                    val reportLine = child.child("transportLine").getValue(String::class.java)
+
+                    // 核心过滤：只有当报告的路线 = 用户当前的路线，才通知
+                    if (reportLine == targetLine) {
+                        val reportData = child.value as? Map<String, Any>
+                        trySend(reportData)
+                    }
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                close(error.toException())
+            }
+        }
+
+        query.addValueEventListener(listener)
+        awaitClose { query.removeEventListener(listener) }
+    }
 }
