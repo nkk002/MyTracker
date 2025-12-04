@@ -1,5 +1,6 @@
 package com.mmu.mytracker.data.remote.repository
 
+import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.mmu.mytracker.data.model.StationService
 import kotlinx.coroutines.tasks.await
@@ -8,49 +9,53 @@ class StationRepository {
 
     private val db = FirebaseFirestore.getInstance()
 
-    // 修改 StationRepository.kt
-
     suspend fun getServicesForStation(stationName: String): List<StationService> {
-        // 1. 定义一个模拟数据的函数
-        fun getMockServices(name: String): List<StationService> {
-            val lowerName = name.lowercase()
-            return when {
-                // 只要名字里有 kajang 就返回这些服务
-                lowerName.contains("kajang") -> listOf(
-                    StationService("1", "MRT Kajang Line", "MRT", "To Kwasa Damansara"),
-                    StationService("2", "Bus 450", "BUS", "To Pudu")
-                )
-                // 只要名字里有 sentral 就返回这些
-                lowerName.contains("sentral") -> listOf(
-                    StationService("3", "LRT Kelana Jaya", "LRT", "To Gombak"),
-                    StationService("4", "KTM Seremban", "KTM", "To Batu Caves")
-                )
-                else -> emptyList()
-            }
-        }
+        val servicesList = mutableListOf<StationService>()
 
         return try {
-            // ... (保留你原来的 Firebase 查询代码) ...
+            Log.d("Firestore", "正在查询车站: $stationName")
 
+            // 1. 去 Firestore 的 'stations' 集合查找名字匹配的车站
             val snapshot = db.collection("stations")
                 .whereEqualTo("name", stationName)
                 .get()
                 .await()
 
-            val servicesList = mutableListOf<StationService>()
-            // ... (保留你原来的解析代码) ...
-
-            // 🔥 修改这里：如果 Firebase 没数据，就返回 Mock 数据
-            if (servicesList.isEmpty()) {
-                getMockServices(stationName)
-            } else {
-                servicesList
+            if (snapshot.isEmpty) {
+                Log.d("Firestore", "找不到车站: $stationName。请确认Firebase里的 'name' 字段是否完全一致。")
+                // 如果为了演示安全，这里可以取消注释调用 Mock 数据：
+                // return getMockServices(stationName)
+                return emptyList()
             }
 
+            // 2. 解析数据
+            for (document in snapshot.documents) {
+                Log.d("Firestore", "找到文档ID: ${document.id}")
+
+                // 获取 'services' 数组
+                val servicesData = document.get("services") as? List<Map<String, String>>
+
+                servicesData?.forEach { serviceMap ->
+                    val newService = StationService(
+                        // 使用安全调用，防止字段缺失
+                        name = serviceMap["name"] ?: "Unknown Service",
+                        type = serviceMap["type"] ?: "BUS",
+                        direction = serviceMap["direction"] ?: ""
+                    )
+                    servicesList.add(newService)
+                }
+            }
+
+            Log.d("Firestore", "解析完成，共 ${servicesList.size} 个服务")
+            servicesList
+
         } catch (e: Exception) {
+            Log.e("Firestore", "查询出错: ${e.message}")
             e.printStackTrace()
-            // 出错时也返回 Mock 数据，方便测试
-            getMockServices(stationName)
+            // 出错时返回空列表
+            emptyList()
         }
     }
+
+    // (Mock 函数可以先删掉，或者留着备用)
 }
