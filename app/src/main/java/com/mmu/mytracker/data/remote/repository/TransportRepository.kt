@@ -137,11 +137,13 @@ class TransportRepository {
 
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
+                Log.d("DEBUG_WAZE", "Snapshot received: ${snapshot.childrenCount} items") // 新增 Log
                 for (child in snapshot.children) {
                     val reportLine = child.child("transportLine").getValue(String::class.java)
+                    Log.d("DEBUG_WAZE", "Checking report line: $reportLine vs Target: $targetLine") // 新增 Log
 
-                    // 核心过滤：只有当报告的路线 = 用户当前的路线，才通知
                     if (reportLine == targetLine) {
+                        Log.d("DEBUG_WAZE", "MATCH FOUND!") // 新增 Log
                         val reportData = child.value as? Map<String, Any>
                         trySend(reportData)
                     }
