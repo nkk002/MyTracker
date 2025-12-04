@@ -19,6 +19,17 @@ import com.mmu.mytracker.R
 import com.mmu.mytracker.data.model.RecentPlace
 import com.mmu.mytracker.ui.adapter.RecentSearchAdapter
 import com.mmu.mytracker.utils.SearchHistoryManager
+import com.mmu.mytracker.data.remote.repository.StationRepository
+import com.mmu.mytracker.ui.view.fragment.ServiceSelectionBottomSheet
+import com.mmu.mytracker.ui.view.activity.RouteDetailActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+// 添加这些 imports 到文件顶部
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SearchActivity : AppCompatActivity() {
 
@@ -119,69 +130,64 @@ class SearchActivity : AppCompatActivity() {
         autocompleteLauncher.launch(intent)
     }
 
+    private val stationRepository = StationRepository()
+
     private fun handleSelectedPlace(place: Place) {
+        val placeName = place.name ?: "Unknown"
+        val lat = place.latLng?.latitude ?: 0.0
+        val lng = place.latLng?.longitude ?: 0.0
+
+        // --- 1. 验证逻辑 (保留你之前的过滤逻辑) ---
         val placeTypes = place.placeTypes ?: emptyList()
-        val placeName = place.name?.lowercase() ?: "" // 转成小写，方便比对
+        val strictTransportTypes = setOf("transit_station", "bus_station", "train_station", "subway_station", "light_rail_station")
+        val transportKeywords = listOf("mrt", "lrt", "ktm", "station", "stesen", "sentral", "terminal", "bus stop")
 
-        // ==========================================
-        // Functional Layer: 双重验证漏斗模型
-        // ==========================================
+        val isValid = placeTypes.any { it in strictTransportTypes } ||
+                transportKeywords.any { placeName.lowercase().contains(it) }
 
-        // 1. 第一层：白名单标签 (Explicit Types)
-        // 只要地点包含这些标签，直接放行 (Pass)
-        // 注意：这里移除了 'establishment' 和 'point_of_interest' 这种万能标签，只保留交通相关的
-        val strictTransportTypes = setOf(
-            "transit_station",
-            "bus_station",
-            "train_station",
-            "subway_station",
-            "light_rail_station",
-            "monorail_station"
-        )
+        if (isValid) {
+            // ✅ 通过验证，它是车站
 
-        val hasExplicitType = placeTypes.any { it in strictTransportTypes }
+            // --- 2. 核心修改：去 Firebase (Repository) 查服务 ---
+            // 使用协程在后台查询
+            lifecycleScope.launch {
+                // 弹个 Loading (可选)
+                Toast.makeText(this@SearchActivity, "Checking services...", Toast.LENGTH_SHORT).show()
 
-        // 2. 第二层：关键词补救 (Keyword Rescue)
-        // 如果第一层没过（Google漏标了），检查名字里有没有这些词
-        val transportKeywords = listOf(
-            "mrt", "lrt", "ktm", "station", "stesen",
-            "sentral", "terminal", "hub", "komuter",
-            "bus stop", "hentian" // Hentian 也是车站常用词
-        )
+                // Step 2: 拿着名字去查服务
+                val services = withContext(Dispatchers.IO) {
+                    stationRepository.getServicesForStation(placeName)
+                }
 
-        val hasTransportKeyword = transportKeywords.any { keyword ->
-            placeName.contains(keyword)
-        }
+                if (services.isNotEmpty()) {
+                    // --- 3. Step 3: 如果有服务，弹出 BottomSheet ---
+                    val bottomSheet = ServiceSelectionBottomSheet(placeName, services) { selectedService ->
 
-        // ==========================================
-        // 决策逻辑
-        // ==========================================
+                        // --- 4. Step 4: 用户选了服务，跳转详情页 ---
+                        val intent = Intent(this@SearchActivity, RouteDetailActivity::class.java)
+                        intent.putExtra("dest_name", placeName)
+                        intent.putExtra("dest_lat", lat)
+                        intent.putExtra("dest_lng", lng)
+                        intent.putExtra("service_name", selectedService.name)
+                        startActivity(intent)
 
-        if (hasExplicitType || hasTransportKeyword) {
-            // 通过验证 (是车站，或者名字像车站)
-            val recent = RecentPlace(
-                name = place.name ?: "Unknown",
-                address = place.address ?: "",
-                lat = place.latLng?.latitude ?: 0.0,
-                lng = place.latLng?.longitude ?: 0.0
-            )
-            historyManager.savePlace(recent)
-            returnResult(recent.name, recent.lat, recent.lng)
+                        // 可选：是否还要保存历史记录？
+                        val recent = RecentPlace(placeName, place.address ?: "", lat, lng)
+                        historyManager.savePlace(recent)
+                    }
+                    bottomSheet.show(supportFragmentManager, "ServiceSelection")
+
+                } else {
+                    // 如果没查到服务 (比如是个冷门车站)，直接走旧逻辑：返回主页定位
+                    val recent = RecentPlace(placeName, place.address ?: "", lat, lng)
+                    historyManager.savePlace(recent)
+                    returnResult(recent.name, recent.lat, recent.lng)
+                }
+            }
 
         } else {
-            // 拦截 (既没有车站标签，名字也不像车站)
-
-            // 调试用：在 Logcat 里打印出来，看看是什么东西被拦截了
-            android.util.Log.d("CheckPlace", "拦截地点: ${place.name}, 类型: $placeTypes")
-
-            Toast.makeText(
-                this,
-                "Please select a valid Transport Station (Bus/MRT/LRT)",
-                Toast.LENGTH_LONG
-            ).show()
-
-            // 可选：如果被拦截了，自动重新弹起搜索框，让用户重选
-            // startGoogleSearch()
+            // ❌ 拦截
+            Toast.makeText(this, "Please select a valid Transport Station", Toast.LENGTH_LONG).show()
         }
     }
 

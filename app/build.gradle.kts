@@ -7,6 +7,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     // 应用Google Services插件，解析google-services.json
     id("com.google.gms.google-services")
+    id("kotlin-parcelize")
 }
 
 android {
@@ -55,6 +56,7 @@ dependencies {
     // =======================================================
     // 引入 BoM (Bill of Materials)，它像个管家，自动管理下面 Firebase 库的版本
     implementation(platform("com.google.firebase:firebase-bom:34.6.0"))
+    implementation("com.google.firebase:firebase-firestore")
 
     // Analytics (分析，可选)
     implementation("com.google.firebase:firebase-analytics")
