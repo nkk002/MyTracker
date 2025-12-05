@@ -169,7 +169,6 @@
             android:layout_gravity="center"/>
 
         <include
-            android:id="@+id/includeAlert"
             layout="@layout/layout_waze_alert" />
     </FrameLayout>
 
