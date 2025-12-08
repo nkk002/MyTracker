@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await // 这里的 await 需要 kotlinx-coroutines-play-services 依赖
 import com.mmu.mytracker.data.model.BusLocation
 import com.mmu.mytracker.data.remote.api.RetrofitInstance
+import com.mmu.mytracker.data.model.Leg
 
 class TransportRepository {
 
@@ -123,8 +124,30 @@ class TransportRepository {
             null
         }
     }
-    // ... (现有的代码)
 
+    suspend fun getTripDetails(origin: String, destination: String, apiKey: String): Leg? {
+        return try {
+            // 这里我们显式传入 "subway" (代表 MRT/LRT)
+            val response = RetrofitInstance.api.getDirections(
+                origin = origin,
+                destination = destination,
+                apiKey = apiKey,
+                mode = "transit",
+                transitMode = "subway" // <--- 强制只看 MRT
+            )
+
+            if (response.isSuccessful && !response.body()?.routes.isNullOrEmpty()) {
+                // 现在拿到的 First Route 肯定是 MRT 了
+                response.body()!!.routes.first().legs.first()
+            } else {
+                // ... 错误处理保持不变
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
     /**
      * 实时监听特定路线的报告 (Waze-style Alert 核心)
      * @param targetLine 用户当前关注的路线，例如 "MRT Kajang Line"

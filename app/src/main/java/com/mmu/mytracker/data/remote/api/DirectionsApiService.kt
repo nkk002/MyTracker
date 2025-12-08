@@ -12,6 +12,11 @@ interface DirectionsApiService {
         @Query("origin") origin: String,
         @Query("destination") destination: String,
         @Query("key") apiKey: String,
-        @Query("mode") mode: String = "transit" // 默认为公交模式
+        @Query("mode") mode: String = "transit",
+        // --- 新增下面这行：强制指定交通工具类型 ---
+        // subway = MRT/LRT/Subway
+        // train = KTM/Intercity (我们要避开这个)
+        // bus = 巴士 (我们要避开这个)
+        @Query("transit_mode") transitMode: String = "subway"
     ): Response<DirectionsResponse>
 }
