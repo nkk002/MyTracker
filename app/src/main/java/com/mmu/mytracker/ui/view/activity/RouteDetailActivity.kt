@@ -1,9 +1,8 @@
 package com.mmu.mytracker.ui.view.activity
 
-import android.content.Intent // 记得加这个 Import
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -21,41 +20,30 @@ class RouteDetailActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_route_detail)
 
-        // --- 新增：设置返回按钮 ---
         setupBackButton()
 
-        // ... (其他初始化代码保持不变) ...
-
-        val destName = intent.getStringExtra("dest_name") ?: "Unknown"
+        // 1. 获取 Intent 传递的数据
+        val destName = intent.getStringExtra("dest_name") ?: "Unknown Station"
         val serviceName = intent.getStringExtra("service_name") ?: ""
 
-        val tvDest = findViewById<TextView>(R.id.tvDestination)
-        val etCurrent = findViewById<EditText>(R.id.etCurrentLocation)
+        // 2. [修改点] 将标题设置为车站名字 (因为移除了下方的显示栏)
+        val tvHeader = findViewById<TextView>(R.id.tvHeaderTitle)
+        tvHeader.text = destName
 
-        tvDest.text = destName
-
-        if (destName.contains("Kajang")) {
-            etCurrent.setText("MRT Stadium Kajang")
-        } else {
-            etCurrent.setText("My Current Location")
-        }
-
+        // 3. 更新时间信息
         updateRealTimeInfo(serviceName)
 
+        // 4. [关键点] 开启 Crowdsource 监听
+        // 当有人提交报告时，这里会收到通知并弹出 Alert
         if (serviceName.isNotEmpty()) {
             startListeningForAlerts(serviceName)
         }
     }
 
-    // --- 新增函数：处理返回逻辑 ---
     private fun setupBackButton() {
         val btnBack = findViewById<ImageButton>(R.id.btnBack)
         btnBack.setOnClickListener {
-            // 选项 A: 只是关闭当前页面，返回到 SearchActivity (标准做法)
-            // finish()
-
-            // 选项 B: 彻底关闭，直接回到 MainActivity (Homepage) - 推荐用于此场景
-            // 因为通常用户看完路线想回主页看地图，而不是回搜索页
+            // 返回到主页 (而不是搜索页)
             val intent = Intent(this, MainActivity::class.java)
             intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             startActivity(intent)
@@ -65,9 +53,11 @@ class RouteDetailActivity : AppCompatActivity() {
 
     private fun updateRealTimeInfo(serviceName: String) {
         val tvNextTrain = findViewById<TextView>(R.id.tvNextTrain)
+        // 这里只是示例，之后你可以连接 API 获取真实时间
         tvNextTrain.text = "4 mins"
     }
 
+    // 监听 Crowdsource 报告的逻辑 (Waze Style Popup)
     private fun startListeningForAlerts(userSelectedLine: String) {
         val alertCard = findViewById<CardView>(R.id.cardAlert)
         val tvTitle = findViewById<TextView>(R.id.tvAlertTitle)
@@ -79,15 +69,18 @@ class RouteDetailActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
+            // 这里监听你在 TransportRepository 写好的 Flow
             transportRepository.observeRealTimeReports(userSelectedLine).collect { report ->
                 if (report != null) {
                     val comment = report["comment"] as? String ?: "Incident reported"
                     val delay = report["delayMinutes"] as? Long ?: 0
                     val type = report["crowdLevel"] as? String ?: "Alert"
 
+                    // 更新 UI 内容
                     tvTitle.text = "⚠️ $type Ahead"
                     tvMessage.text = "$comment. Expect +$delay mins delay."
 
+                    // 显示弹窗动画
                     if (alertCard.visibility == View.GONE) {
                         alertCard.visibility = View.VISIBLE
                         alertCard.alpha = 0f

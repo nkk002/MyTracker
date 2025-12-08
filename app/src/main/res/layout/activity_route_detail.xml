@@ -23,6 +23,7 @@
             android:contentDescription="Back" />
 
         <TextView
+            android:id="@+id/tvHeaderTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Route Details"
@@ -37,68 +38,7 @@
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="16dp"
         android:layout_marginBottom="16dp"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="6dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@drawable/ic_launcher_foreground"
-                    app:tint="@android:color/holo_blue_light"/>
-                <EditText
-                    android:id="@+id/etCurrentLocation"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:hint="Current Location"
-                    android:text="MRT Stadium Kajang"
-                    android:textSize="16sp"/>
-            </LinearLayout>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#E0E0E0"
-                android:layout_marginVertical="8dp"/>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@drawable/ic_launcher_foreground"
-                    app:tint="@android:color/holo_red_light"/>
-                <TextView
-                    android:id="@+id/tvDestination"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:text="MRT Kajang"
-                    android:textSize="16sp"
-                    android:textStyle="bold"/>
-            </LinearLayout>
-        </LinearLayout>
-    </androidx.cardview.widget.CardView>
-
-    <androidx.cardview.widget.CardView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
-        android:layout_marginBottom="16dp"
+        android:layout_marginTop="8dp"
         app:cardBackgroundColor="#E3F2FD"
         app:cardCornerRadius="8dp"
         app:cardElevation="2dp">
@@ -124,7 +64,7 @@
                     android:id="@+id/tvNextTrain"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="5 mins"
+                    android:text="4 mins"
                     android:textSize="20sp"
                     android:textStyle="bold"
                     android:textColor="@color/black"/>
@@ -162,6 +102,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#F5F5F5">
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
