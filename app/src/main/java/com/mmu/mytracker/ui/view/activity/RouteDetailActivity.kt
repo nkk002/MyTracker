@@ -89,14 +89,13 @@ class RouteDetailActivity : AppCompatActivity() {
         val origin = "$currentLat,$currentLng"
         val destination = "$destLat,$destLng"
 
-        // 使用协程开启一个循环
         lifecycleScope.launch {
-            // isActive 保证了当用户退出这个页面时，循环会自动停止，不会浪费电和流量
-            while (isActive) {
-                Log.d("DEBUG_TIME", "Refreshing data...")
+            while (isActive) { // 循环开始
+                Log.d("DEBUG_TIME", "正在刷新时间数据...")
 
-                // 1. 请求数据 (切到 IO 线程)
+                // 1. 请求数据 (IO线程)
                 val leg = withContext(Dispatchers.IO) {
+                    // 记得确认这里是否加了 transitMode = "subway" 参数
                     transportRepository.getTripDetails(origin, destination, apiKey)
                 }
 
@@ -105,17 +104,34 @@ class RouteDetailActivity : AppCompatActivity() {
                     val tvNextTrain = findViewById<TextView>(R.id.tvNextTrain)
                     val tvArrival = findViewById<TextView>(R.id.tvArrival)
 
-                    // ... (这里放您原本的更新 UI 代码: 更新 tvArrival 和 tvNextTrain) ...
-
-                    // 示例:
+                    // --- A. 更新 Arrival Time (到达时间) ---
                     if (leg.arrivalTime != null) {
                         tvArrival.text = leg.arrivalTime.text
+                    } else {
+                        tvArrival.text = "Walk"
                     }
-                    // ... 更新 Next Train 逻辑 ...
+
+                    // --- B. 更新 Next Train (这里是之前缺失的逻辑) ---
+                    if (leg.departureTime != null) {
+                        val diffSeconds = leg.departureTime.value - (System.currentTimeMillis() / 1000)
+                        val minutes = diffSeconds / 60
+
+                        if (minutes > 0) {
+                            tvNextTrain.text = "$minutes mins"     // 还有 X 分钟
+                        } else if (minutes >= -1) {
+                            tvNextTrain.text = "Arriving"          // 刚刚到 (0 到 -1 分钟)
+                        } else {
+                            tvNextTrain.text = "Departed"          // 已经走了 (小于 -1 分钟)
+                            // 提示：如果变成 Departed，通常需要等待 API 返回下一班车的数据
+                        }
+                    } else {
+                        tvNextTrain.text = "Now"
+                    }
+                } else {
+                    Log.e("DEBUG_TIME", "获取数据失败 (Leg is null)")
                 }
 
-                // 3. 等待 60 秒再进行下一次刷新
-                // Google API 是收费的，建议不要刷得太快，1分钟一次刚刚好
+                // 3. 等待 60 秒 (每分钟刷新一次)
                 delay(60000)
             }
         }
