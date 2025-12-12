@@ -21,9 +21,6 @@ import com.mmu.mytracker.data.remote.repository.TransportRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 
@@ -35,6 +32,9 @@ class RouteDetailActivity : AppCompatActivity() {
     // 存储目标车站坐标
     private var destLat: Double = 0.0
     private var destLng: Double = 0.0
+
+    // 【新增】用来缓存上一班车的发车时间戳 (秒)
+    private var cachedDepartureTime: Long = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,91 +54,103 @@ class RouteDetailActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.tvHeaderTitle).text = destName
 
         // 2. 开始获取真实时间数据
-        fetchRealTimeData()
+        // 注意：这里不需要先获取定位了，因为是“车站看板模式”，直接用车站坐标查
+        getDirectionsData()
 
-        // 3. 开启 Crowdsource 监听 (你原本的逻辑)
+        // 3. 开启 Crowdsource 监听
         if (serviceName.isNotEmpty()) {
             startListeningForAlerts(serviceName)
         }
     }
 
-    private fun fetchRealTimeData() {
-        // 检查定位权限
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            Toast.makeText(this, "Location permission needed for ETA", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // 获取当前位置
-        fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
-            if (location != null) {
-                // 拿到当前位置后，请求 API
-                getDirectionsData(location.latitude, location.longitude)
-            } else {
-                Toast.makeText(this, "Cannot get current location", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun getDirectionsData(currentLat: Double, currentLng: Double) {
+    // 移除了 fetchRealTimeData，直接使用 getDirectionsData
+    private fun getDirectionsData() {
         val apiKey = getString(R.string.google_maps_key)
-        val origin = "$currentLat,$currentLng"
-        val destination = "$destLat,$destLng"
+
+        // 【关键】起点设为车站坐标，模拟“我就在车站”
+        val origin = "$destLat,$destLng"
+        // 终点 (建议后续从上个页面传过来，这里暂用硬编码演示)
+        val destination = "Kwasa Damansara"
 
         lifecycleScope.launch {
-            while (isActive) { // 循环开始
-                Log.d("DEBUG_TIME", "正在刷新时间数据...")
+            while (isActive) {
+                val now = System.currentTimeMillis() / 1000 // 当前手机时间(秒)
 
-                // 1. 请求数据 (IO线程)
-                val leg = withContext(Dispatchers.IO) {
-                    // 记得确认这里是否加了 transitMode = "subway" 参数
-                    transportRepository.getTripDetails(origin, destination, apiKey)
-                }
+                // =============================================================
+                // 🚀 核心逻辑：智能刷新
+                // 只有当 "没有缓存数据" 或者 "这班车已经开走了(cached < now)" 时，才请求 API
+                // =============================================================
+                if (cachedDepartureTime == 0L || cachedDepartureTime < now) {
 
-                // 2. 更新 UI (主线程)
-                if (leg != null) {
-                    val tvNextTrain = findViewById<TextView>(R.id.tvNextTrain)
-                    val tvArrival = findViewById<TextView>(R.id.tvArrival)
+                    Log.d("DEBUG_TIME", "🔍 发车时间已过或无数据，正在请求 Google API 获取下一班...")
 
-                    // --- A. 更新 Arrival Time (到达时间) ---
-                    if (leg.arrivalTime != null) {
-                        tvArrival.text = leg.arrivalTime.text
-                    } else {
-                        tvArrival.text = "Walk"
+                    val leg = withContext(Dispatchers.IO) {
+                        transportRepository.getTripDetails(origin, destination, apiKey)
                     }
 
-                    // --- B. 更新 Next Train (这里是之前缺失的逻辑) ---
-                    if (leg.departureTime != null) {
-                        val diffSeconds = leg.departureTime.value - (System.currentTimeMillis() / 1000)
-                        val minutes = diffSeconds / 60
+                    if (leg != null) {
+                        // 1. 尝试从详细步骤中找到 "TRANSIT" (地铁/公交) 的那一步
+                        val transitStep = leg.steps.find { it.transitDetails != null }
 
-                        if (minutes > 0) {
-                            tvNextTrain.text = "$minutes mins"     // 还有 X 分钟
-                        } else if (minutes >= -1) {
-                            tvNextTrain.text = "Arriving"          // 刚刚到 (0 到 -1 分钟)
-                        } else {
-                            tvNextTrain.text = "Departed"          // 已经走了 (小于 -1 分钟)
-                            // 提示：如果变成 Departed，通常需要等待 API 返回下一班车的数据
+                        // 2. 优先使用 Transit 里的时间 (列车时刻表)，找不到才用 Leg 时间
+                        val realDepartureTime = transitStep?.transitDetails?.departureTime ?: leg.departureTime
+
+                        if (realDepartureTime != null) {
+                            // ✅ 成功拿到新班次！存入缓存！
+                            cachedDepartureTime = realDepartureTime.value
+                            Log.d("OFFICIAL_DATA", "✅ API 更新成功: 下一班车是 ${realDepartureTime.text} (时间戳: $cachedDepartureTime)")
+
+                            // 🔴 修改点：现在右边的 Arrival 显示的是“本站发车时间”，而不是“终点站到达时间”
+                            val tvArrival = findViewById<TextView>(R.id.tvArrival)
+                            tvArrival.text = realDepartureTime.text
                         }
                     } else {
-                        tvNextTrain.text = "Now"
+                        Log.e("DEBUG_TIME", "❌ API 返回空数据 (可能是深夜没车或网络问题)")
                     }
                 } else {
-                    Log.e("DEBUG_TIME", "获取数据失败 (Leg is null)")
+                    // 如果缓存的时间还没过，就跳过 API 请求，只在本地做倒计时
+                    Log.d("DEBUG_TIME", "♻️ 使用缓存数据进行倒计时 (无需请求 API)")
                 }
 
-                // 3. 等待 60 秒 (每分钟刷新一次)
-                delay(60000)
+                // =============================================================
+                // ⏰ UI 倒计时更新 (这一步每次循环都会跑，负责计算剩余分钟)
+                // =============================================================
+                val tvNextTrain = findViewById<TextView>(R.id.tvNextTrain)
+
+                if (cachedDepartureTime != 0L) {
+                    val diffSeconds = cachedDepartureTime - (System.currentTimeMillis() / 1000)
+                    val minutes = diffSeconds / 60
+
+                    Log.d("OFFICIAL_DATA", "UI 更新: 剩余 $minutes mins")
+
+                    if (minutes > 1) {
+                        tvNextTrain.text = "$minutes mins"
+                        tvNextTrain.setTextColor(getColor(R.color.black))
+                    } else if (minutes >= 0) {
+                        // 剩 0 或 1 分钟
+                        tvNextTrain.text = "Arriving"
+                        tvNextTrain.setTextColor(getColor(android.R.color.holo_green_dark))
+                    } else {
+                        // 变成了负数 (车走了)
+                        tvNextTrain.text = "Departed"
+                        tvNextTrain.setTextColor(getColor(android.R.color.holo_red_dark))
+
+                        // 【注意】显示 Departed 后，
+                        // 下一次循环 (10秒后)，因为 cachedDepartureTime < now，
+                        // 上面的 if 判断会自动成立，从而触发 API 请求获取下一班车！
+                    }
+                } else {
+                    tvNextTrain.text = "Loading..."
+                }
+
+                // 改为每 10 秒刷新一次 UI，倒计时更流畅
+                // 这不会浪费 API 次数，因为上面的 if 会拦截不必要的网络请求
+                delay(10000)
             }
         }
     }
 
     private fun setupBackButton() {
-        // ... (保持你之前的代码不变)
         val btnBack = findViewById<ImageButton>(R.id.btnBack)
         btnBack.setOnClickListener {
             val intent = Intent(this, MainActivity::class.java)
@@ -148,7 +160,6 @@ class RouteDetailActivity : AppCompatActivity() {
         }
     }
 
-    // ... (保持 startListeningForAlerts 代码不变)
     private fun startListeningForAlerts(userSelectedLine: String) {
         val alertCard = findViewById<CardView>(R.id.cardAlert)
         val tvTitle = findViewById<TextView>(R.id.tvAlertTitle)

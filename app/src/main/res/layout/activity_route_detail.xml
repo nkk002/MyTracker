@@ -69,12 +69,6 @@
                     android:textColor="@color/black"
                     android:textSize="20sp"
                     android:textStyle="bold" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Live from Crowd"
-                    android:textSize="10sp"
-                    android:textColor="#4CAF50"/>
             </LinearLayout>
 
             <LinearLayout
@@ -82,10 +76,11 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical">
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="🏁 Arrival"
+                    android:text="🕒 Train Time"
                     android:textSize="12sp"/>
 
                 <TextView
