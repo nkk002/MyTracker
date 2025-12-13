@@ -30,6 +30,7 @@ import kotlinx.coroutines.withContext
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.mmu.mytracker.utils.ActiveRouteManager
 
 class SearchActivity : AppCompatActivity() {
 
@@ -164,7 +165,17 @@ class SearchActivity : AppCompatActivity() {
                     // --- 3. Step 3: 如果有服务，弹出 BottomSheet ---
                     val bottomSheet = ServiceSelectionBottomSheet(placeName, services) { selectedService ->
 
-                        // --- 4. Step 4: 用户选了服务，跳转详情页 ---
+                        // 🔥【新增步骤】保存当前路线到 ActiveRouteManager
+                        // 这样 MainActivity 才能读取并显示 Live Tracking 卡片
+                        ActiveRouteManager.saveRoute(
+                            this@SearchActivity,
+                            placeName,            // 车站名字 (e.g. "MRT Kajang")
+                            selectedService.name, // 服务名字 (e.g. "MRT Kajang Line")
+                            lat,                  // 纬度
+                            lng                   // 经度
+                        )
+
+                        // 原有的跳转逻辑
                         val intent = Intent(this@SearchActivity, RouteDetailActivity::class.java)
                         intent.putExtra("dest_name", placeName)
                         intent.putExtra("dest_lat", lat)
@@ -172,7 +183,7 @@ class SearchActivity : AppCompatActivity() {
                         intent.putExtra("service_name", selectedService.name)
                         startActivity(intent)
 
-                        // 可选：是否还要保存历史记录？
+                        // 原有的历史记录保存逻辑 (保持不变)
                         val recent = RecentPlace(placeName, place.address ?: "", lat, lng)
                         historyManager.savePlace(recent)
                     }
