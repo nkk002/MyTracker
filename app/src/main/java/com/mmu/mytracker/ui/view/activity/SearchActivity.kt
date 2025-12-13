@@ -2,14 +2,16 @@ package com.mmu.mytracker.ui.view.activity
 
 import android.app.Activity
 import android.content.Intent
+import android.location.Location
 import android.os.Bundle
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.gms.common.api.Status
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.widget.Autocomplete
@@ -17,48 +19,41 @@ import com.google.android.libraries.places.widget.AutocompleteActivity
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode
 import com.mmu.mytracker.R
 import com.mmu.mytracker.data.model.RecentPlace
-import com.mmu.mytracker.ui.adapter.RecentSearchAdapter
-import com.mmu.mytracker.utils.SearchHistoryManager
+import com.mmu.mytracker.data.model.Station
 import com.mmu.mytracker.data.remote.repository.StationRepository
+import com.mmu.mytracker.ui.adapter.RecentSearchAdapter
 import com.mmu.mytracker.ui.view.fragment.ServiceSelectionBottomSheet
-import com.mmu.mytracker.ui.view.activity.RouteDetailActivity
-import kotlinx.coroutines.CoroutineScope
+import com.mmu.mytracker.utils.ActiveRouteManager
+import com.mmu.mytracker.utils.SearchHistoryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-// 添加这些 imports 到文件顶部
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import com.mmu.mytracker.utils.ActiveRouteManager
 
 class SearchActivity : AppCompatActivity() {
 
     private lateinit var historyManager: SearchHistoryManager
     private lateinit var adapter: RecentSearchAdapter
+    private val stationRepository = StationRepository()
 
-    // 1. 定义 Google 搜索启动器
+    // 定义 Google 搜索启动器
     private val autocompleteLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         when (result.resultCode) {
             Activity.RESULT_OK -> {
-                // 用户选中了地点
                 result.data?.let { intent ->
                     val place = Autocomplete.getPlaceFromIntent(intent)
                     handleSelectedPlace(place)
                 }
             }
             AutocompleteActivity.RESULT_ERROR -> {
-                // 发生错误
                 result.data?.let { intent ->
                     val status = Autocomplete.getStatusFromIntent(intent)
                     Toast.makeText(this, "Error: ${status.statusMessage}", Toast.LENGTH_SHORT).show()
                 }
             }
             Activity.RESULT_CANCELED -> {
-                // 用户取消了搜索（按了返回键），停留在 SearchActivity 显示历史记录
-                // 不做任何操作
+                // 用户取消搜索，不做操作
             }
         }
     }
@@ -69,7 +64,6 @@ class SearchActivity : AppCompatActivity() {
 
         historyManager = SearchHistoryManager(this)
 
-        // 初始化 Places (防止 MainActivity 没初始化)
         if (!Places.isInitialized()) {
             Places.initialize(applicationContext, getString(R.string.google_maps_key))
         }
@@ -78,16 +72,16 @@ class SearchActivity : AppCompatActivity() {
         setupFakeSearchBar()
         setupBackButton()
 
-        // 2. 核心逻辑：如果是第一次进入页面，自动弹出搜索框！
+        // 如果是第一次进入，自动弹出搜索框
         if (savedInstanceState == null) {
             startGoogleSearch()
         }
     }
 
     private fun setupBackButton() {
-        val btnBack = findViewById<android.widget.ImageButton>(R.id.btnBack)
+        val btnBack = findViewById<ImageButton>(R.id.btnBack)
         btnBack.setOnClickListener {
-            finish() // 关闭当前页面，返回上一页 (Homepage)
+            finish()
         }
     }
 
@@ -103,102 +97,128 @@ class SearchActivity : AppCompatActivity() {
     }
 
     private fun setupFakeSearchBar() {
-        // 如果用户之前取消了搜索，现在想重新搜，点击这个伪搜索栏再次触发
         findViewById<TextView>(R.id.tvSearchInput).setOnClickListener {
             startGoogleSearch()
         }
     }
 
-    // 3. 启动 Google 全屏搜索界面的方法
     private fun startGoogleSearch() {
-        // 1. 重要：必须增加 Place.Field.TYPES 字段，否则拿不到地点类型
+        // 请求 ID, Name, LatLng, Types
         val fields = listOf(
             Place.Field.ID,
             Place.Field.NAME,
             Place.Field.LAT_LNG,
             Place.Field.ADDRESS,
-            Place.Field.TYPES // <--- 新增这个
+            Place.Field.TYPES
         )
 
-        // 构建 Intent
         val intent = Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
-            .setCountries(listOf("MY")) // 限制马来西亚
-            // 尝试过滤：虽然 Google 不保证 100% 只显示车站，但这会提高车站的优先级
-            // 注意：Android SDK 对这里支持的过滤器有限，主要靠后面的“验证”步骤
-            // .setTypesFilter(listOf("transit_station"))
+            .setCountries(listOf("MY"))
             .build(this)
 
         autocompleteLauncher.launch(intent)
     }
 
-    private val stationRepository = StationRepository()
-
+    /**
+     * 🔥 核心修改：处理用户选中的地点
+     * 不再对比名字，而是对比坐标距离 (Distance Matching)
+     */
     private fun handleSelectedPlace(place: Place) {
-        val placeName = place.name ?: "Unknown"
-        android.util.Log.d("DEBUG_SEARCH", "Google 返回的名字是: $placeName") // <--- 加这一行
-        val lat = place.latLng?.latitude ?: 0.0
-        val lng = place.latLng?.longitude ?: 0.0
+        val googlePlaceName = place.name ?: "Unknown"
+        val userLat = place.latLng?.latitude ?: 0.0
+        val userLng = place.latLng?.longitude ?: 0.0
 
-        // --- 1. 验证逻辑 (保留你之前的过滤逻辑) ---
+        // 1. 初步筛选：是否是交通相关地点 (保留原逻辑作为第一道防线)
         val placeTypes = place.placeTypes ?: emptyList()
         val strictTransportTypes = setOf("transit_station", "bus_station", "train_station", "subway_station", "light_rail_station")
         val transportKeywords = listOf("mrt", "lrt", "ktm", "station", "stesen", "sentral", "terminal", "bus stop")
 
-        val isValid = placeTypes.any { it in strictTransportTypes } ||
-                transportKeywords.any { placeName.lowercase().contains(it) }
+        val isTransportRelated = placeTypes.any { it in strictTransportTypes } ||
+                transportKeywords.any { googlePlaceName.lowercase().contains(it) }
 
-        if (isValid) {
-            // ✅ 通过验证，它是车站
-
-            // --- 2. 核心修改：去 Firebase (Repository) 查服务 ---
-            // 使用协程在后台查询
+        if (isTransportRelated) {
+            // 开始寻找最近的车站
             lifecycleScope.launch {
-                // 弹个 Loading (可选)
-                Toast.makeText(this@SearchActivity, "Checking services...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@SearchActivity, "Finding nearest station...", Toast.LENGTH_SHORT).show()
 
-                // Step 2: 拿着名字去查服务
-                val services = withContext(Dispatchers.IO) {
-                    stationRepository.getServicesForStation(placeName)
+                // Step A: 准备用户选中的位置对象
+                val selectedLocation = Location("user_selected").apply {
+                    latitude = userLat
+                    longitude = userLng
                 }
 
-                if (services.isNotEmpty()) {
-                    // --- 3. Step 3: 如果有服务，弹出 BottomSheet ---
-                    val bottomSheet = ServiceSelectionBottomSheet(placeName, services) { selectedService ->
+                // Step B: 获取 Firestore 所有车站
+                val allStations = withContext(Dispatchers.IO) {
+                    stationRepository.getAllStations()
+                }
 
-                        // 🔥【新增步骤】保存当前路线到 ActiveRouteManager
-                        // 这样 MainActivity 才能读取并显示 Live Tracking 卡片
-                        ActiveRouteManager.saveRoute(
-                            this@SearchActivity,
-                            placeName,            // 车站名字 (e.g. "MRT Kajang")
-                            selectedService.name, // 服务名字 (e.g. "MRT Kajang Line")
-                            lat,                  // 纬度
-                            lng                   // 经度
-                        )
+                // Step C: 寻找最近的车站 (500米范围内)
+                var nearestStation: Station? = null
+                var minDistance = Float.MAX_VALUE
+                val MATCH_THRESHOLD_METERS = 500f
 
-                        // 原有的跳转逻辑
-                        val intent = Intent(this@SearchActivity, RouteDetailActivity::class.java)
-                        intent.putExtra("dest_name", placeName)
-                        intent.putExtra("dest_lat", lat)
-                        intent.putExtra("dest_lng", lng)
-                        intent.putExtra("service_name", selectedService.name)
-                        startActivity(intent)
-
-                        // 原有的历史记录保存逻辑 (保持不变)
-                        val recent = RecentPlace(placeName, place.address ?: "", lat, lng)
-                        historyManager.savePlace(recent)
+                for (station in allStations) {
+                    val stationLocation = Location("firestore_station").apply {
+                        latitude = station.latitude
+                        longitude = station.longitude
                     }
-                    bottomSheet.show(supportFragmentManager, "ServiceSelection")
+
+                    val distance = selectedLocation.distanceTo(stationLocation)
+
+                    if (distance <= MATCH_THRESHOLD_METERS && distance < minDistance) {
+                        minDistance = distance
+                        nearestStation = station
+                    }
+                }
+
+                // Step D: 处理结果
+                if (nearestStation != null) {
+                    // 🎉 匹配成功！(比如用户选了 Gate A，我们找到了主车站)
+                    val officialName = nearestStation.name
+                    val services = nearestStation.services
+
+                    if (services.isNotEmpty()) {
+                        // 弹出 BottomSheet 供用户选择服务
+                        val bottomSheet = ServiceSelectionBottomSheet(officialName, services) { selectedService ->
+
+                            // 保存路线 (使用官方车站坐标，而非用户点击的坐标，这样更准)
+                            ActiveRouteManager.saveRoute(
+                                this@SearchActivity,
+                                officialName,
+                                selectedService.name,
+                                nearestStation.latitude,
+                                nearestStation.longitude
+                            )
+
+                            // 跳转到详情页
+                            val intent = Intent(this@SearchActivity, RouteDetailActivity::class.java)
+                            intent.putExtra("dest_name", officialName)
+                            intent.putExtra("dest_lat", nearestStation.latitude)
+                            intent.putExtra("dest_lng", nearestStation.longitude)
+                            intent.putExtra("service_name", selectedService.name)
+                            startActivity(intent)
+
+                            // 保存到历史记录 (显示用户搜的名字，但保存官方坐标)
+                            val recent = RecentPlace(googlePlaceName, place.address ?: "", userLat, userLng)
+                            historyManager.savePlace(recent)
+                        }
+                        bottomSheet.show(supportFragmentManager, "ServiceSelection")
+                    } else {
+                        Toast.makeText(this@SearchActivity, "Station found but no services configured.", Toast.LENGTH_SHORT).show()
+                    }
 
                 } else {
-                    // 如果没查到服务 (比如是个冷门车站)，直接走旧逻辑：返回主页定位
-                    val recent = RecentPlace(placeName, place.address ?: "", lat, lng)
+                    //  没找到匹配的车站
+                    Toast.makeText(this@SearchActivity, "No supported station found nearby (within 500m).", Toast.LENGTH_LONG).show()
+
+                    // 依旧作为普通地点保存历史
+                    val recent = RecentPlace(googlePlaceName, place.address ?: "", userLat, userLng)
                     historyManager.savePlace(recent)
                     returnResult(recent.name, recent.lat, recent.lng)
                 }
             }
-
         } else {
-            // ❌ 拦截
+            // ❌ 如果选的根本不是车站 (比如选了 KFC)
             Toast.makeText(this, "Please select a valid Transport Station", Toast.LENGTH_LONG).show()
         }
     }
