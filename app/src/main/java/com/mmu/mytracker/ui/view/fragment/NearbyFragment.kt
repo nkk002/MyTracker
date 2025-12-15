@@ -20,11 +20,14 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.location.LocationServices
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.mmu.mytracker.R
+import com.mmu.mytracker.data.model.Station
 import com.mmu.mytracker.data.remote.repository.StationRepository
 import com.mmu.mytracker.ui.view.activity.RouteDetailActivity
 import com.mmu.mytracker.ui.adapter.NearbyStationAdapter
-import com.mmu.mytracker.utils.TimeUtils // 🔥 确保导入了这个工具类
+import com.mmu.mytracker.utils.TimeUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -36,13 +39,16 @@ class NearbyFragment : Fragment() {
     private val stationRepository = StationRepository()
     private lateinit var adapter: NearbyStationAdapter
 
-    private var selectedType = "MRT" // 默认选中 MRT
+    private var selectedType = "MRT"
+
+    // 🔥 1. 新增：缓存变量 (用来存下载好的车站，防止重复下载)
+    private var cachedAllStations: List<Station>? = null
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
-            refreshData()
+            refreshData(showLoading = true) // 首次加载显示 Loading
         } else {
             Toast.makeText(context, "Location needed for nearby stations", Toast.LENGTH_SHORT).show()
             progressBar.visibility = View.GONE
@@ -65,14 +71,31 @@ class NearbyFragment : Fragment() {
         toggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (isChecked) {
                 selectedType = if (checkedId == R.id.btnSelectMrt) "MRT" else "BUS"
-                refreshData()
+                // 切换类型时，马上刷新一次
+                refreshData(showLoading = false)
             }
         }
 
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            refreshData()
+            refreshData(showLoading = true)
         } else {
             requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+
+        // 🔥 2. 启动自动刷新循环 (每 30 秒刷新一次)
+        startAutoRefreshLoop()
+    }
+
+    // 🔥 3. 自动刷新逻辑
+    private fun startAutoRefreshLoop() {
+        lifecycleScope.launch {
+            while (isActive) { // 只要页面还在，就一直跑
+                delay(30000) // 等待 30 秒
+                // 静默刷新 (不转圈圈)
+                if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    refreshData(showLoading = false)
+                }
+            }
         }
     }
 
@@ -83,12 +106,11 @@ class NearbyFragment : Fragment() {
             intent.putExtra("dest_lat", station.latitude)
             intent.putExtra("dest_lng", station.longitude)
 
-            // 🔥 核心修复：找到刚才计算时间用的是哪一个 Service，把它的准确名字传过去
-            // 之前是传 "$selectedType Service"，太模糊了
+            // 传递精准的服务名字
             val targetService = station.services.find { it.type.equals(selectedType, ignoreCase = true) }
-            val exactServiceName = targetService?.name ?: "$selectedType Service" // e.g. "MRT Kajang Line"
-
+            val exactServiceName = targetService?.name ?: "$selectedType Service"
             intent.putExtra("service_name", exactServiceName)
+
             startActivity(intent)
         }
         recyclerView.layoutManager = LinearLayoutManager(context)
@@ -96,8 +118,9 @@ class NearbyFragment : Fragment() {
     }
 
     @SuppressLint("MissingPermission")
-    private fun refreshData() {
-        progressBar.visibility = View.VISIBLE
+    private fun refreshData(showLoading: Boolean) {
+        // 只有在强制要求时才显示 Loading，自动刷新时不显示
+        if (showLoading) progressBar.visibility = View.VISIBLE
 
         val fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity())
 
@@ -105,22 +128,32 @@ class NearbyFragment : Fragment() {
             if (location != null) {
                 calculateNearbyStations(location)
             } else {
-                Toast.makeText(context, "Getting location...", Toast.LENGTH_SHORT).show()
-                progressBar.visibility = View.GONE
+                if (showLoading) {
+                    Toast.makeText(context, "Getting location...", Toast.LENGTH_SHORT).show()
+                    progressBar.visibility = View.GONE
+                }
             }
         }.addOnFailureListener {
             progressBar.visibility = View.GONE
-            Toast.makeText(context, "Failed to get location", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun calculateNearbyStations(userLocation: Location) {
         lifecycleScope.launch {
             try {
-                val allStations = withContext(Dispatchers.IO) {
-                    stationRepository.getAllStations()
+                // 🔥 4. 智能获取数据：如果有缓存，直接用缓存；没有才去下载
+                val allStations = if (cachedAllStations != null) {
+                    cachedAllStations!! // 使用缓存
+                } else {
+                    // 没有缓存，去 Firestore 下载
+                    val fetched = withContext(Dispatchers.IO) {
+                        stationRepository.getAllStations()
+                    }
+                    cachedAllStations = fetched // 存入缓存
+                    fetched
                 }
 
+                // 下面的逻辑保持不变 (筛选 + 计算时间)
                 val filteredList = allStations.filter { station ->
                     station.services.any { it.type.equals(selectedType, ignoreCase = true) }
                 }
@@ -136,7 +169,7 @@ class NearbyFragment : Fragment() {
                         val infoText = if (matchingService != null) {
                             val distKm = "%.2f km".format(distance / 1000)
 
-                            // 🔥 修改这里：使用 TimeUtils 计算真实时间，确保和详情页一致
+                            // 使用 TimeUtils 重新计算 (因为 TimeUtils 每次都会拿当前 LocalTime.now())
                             val mins = TimeUtils.getMinutesUntilNextTrain(matchingService.first_train, matchingService.frequency_min)
                             val timeString = TimeUtils.formatTimeDisplay(mins)
 
@@ -153,12 +186,11 @@ class NearbyFragment : Fragment() {
                 val finalData = filteredList.map { Pair(it.first, it.third) }
                 adapter.updateData(finalData)
 
-                if (finalData.isEmpty()) {
-                    Toast.makeText(context, "No nearby $selectedType stations found", Toast.LENGTH_SHORT).show()
-                }
-
             } catch (e: Exception) {
-                Toast.makeText(context, "Error loading stations: ${e.message}", Toast.LENGTH_SHORT).show()
+                // 出错时不弹 Toast 干扰自动刷新
+                if (progressBar.visibility == View.VISIBLE) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             } finally {
                 progressBar.visibility = View.GONE
             }
