@@ -69,12 +69,13 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical">
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="🕒 Next Train"
-                    android:textSize="12sp"
-                    android:textColor="#1565C0"/>
+                    android:textColor="#1565C0"
+                    android:textSize="14sp" />
 
                 <TextView
                     android:id="@+id/tvNextTrain"
@@ -82,7 +83,7 @@
                     android:layout_height="wrap_content"
                     android:text="-- min"
                     android:textColor="@android:color/black"
-                    android:textSize="24sp"
+                    android:textSize="21sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -95,17 +96,17 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Freq"
-                    android:textSize="12sp"
-                    android:textColor="#1565C0"/>
+                    android:text="🕒 Arrival Time"
+                    android:textColor="#1565C0"
+                    android:textSize="14sp" />
 
                 <TextView
                     android:id="@+id/tvArrival"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Standard"
+                    android:text="--:--"
                     android:textColor="@android:color/black"
-                    android:textSize="18sp"
+                    android:textSize="21sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </LinearLayout>
