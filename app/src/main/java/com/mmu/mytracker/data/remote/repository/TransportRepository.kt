@@ -26,7 +26,7 @@ class TransportRepository {
     private val locationsRef: DatabaseReference = database.getReference("bus_locations")
 
     // 指向 "reports" 根节点
-    private val reportsRef: DatabaseReference = database.getReference("reports")
+    private val reportsRef = database.getReference("reports")
 
     /**
      * 更新公交车位置
@@ -80,28 +80,23 @@ class TransportRepository {
     /**
      * 提交详细的用户报告
      */
-    suspend fun submitReport(
-        transportLine: String,
-        crowdLevel: String,
-        delayMinutes: Int,
-        comment: String
-    ): Boolean {
+    suspend fun submitReport(line: String, station: String, crowd: String, comment: String): Boolean {
         return try {
-            val key = reportsRef.push().key?: return false
+            val reportId = reportsRef.push().key ?: return false
 
-            val reportData = mapOf(
-                "id" to key,
-                "transportLine" to transportLine,
-                "crowdLevel" to crowdLevel,
-                "delayMinutes" to delayMinutes,
+            val reportData = hashMapOf(
+                "reportId" to reportId,
+                "transportLine" to line,
+                "station" to station, // 🔥 保存车站名字
+                "crowdLevel" to crowd,
                 "comment" to comment,
                 "timestamp" to System.currentTimeMillis()
             )
 
-            reportsRef.child(key).setValue(reportData).await()
+            reportsRef.child(reportId).setValue(reportData).await()
             true
         } catch (e: Exception) {
-            Log.e("TransportRepo", "Report submission failed", e)
+            e.printStackTrace()
             false
         }
     }

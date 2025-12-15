@@ -49,7 +49,7 @@ class RouteDetailActivity : AppCompatActivity() {
             finish()
         }
 
-        startListeningForAlerts(serviceName)
+        startListeningForAlerts(serviceName, destName)
         fetchStationDetailsAndCalculateTime(destName, serviceName)
     }
 
@@ -107,7 +107,12 @@ class RouteDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun startListeningForAlerts(userSelectedLine: String) {
+    /**
+     * 监听并过滤警报
+     * @param userSelectedLine 用户所在的路线 (e.g. MRT Kajang Line)
+     * @param currentStationName 用户所在的车站 (e.g. Kajang Station)
+     */
+    private fun startListeningForAlerts(userSelectedLine: String, currentStationName: String) {
         try {
             val alertCard = findViewById<CardView>(R.id.cardAlert) ?: return
             val tvTitle = findViewById<TextView>(R.id.tvAlertTitle)
@@ -119,13 +124,34 @@ class RouteDetailActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 transportRepository.observeRealTimeReports(userSelectedLine).collect { report ->
                     if (report != null) {
+                        // 1. 获取报告里的车站信息
+                        val reportStation = report["station"] as? String ?: "General"
                         val type = report["crowdLevel"] as? String ?: "Alert"
-                        tvTitle.text = "⚠️ $type"
-                        tvMessage.text = "${report["comment"]}"
-                        alertCard.visibility = View.VISIBLE
+                        val comment = report["comment"] as? String ?: ""
+
+                        // 2. 🔥 过滤逻辑：
+                        // - 如果是 "General (Whole Line)"，或者是针对 "General" 的 -> 全线显示
+                        // - 如果是特定车站 -> 只有名字匹配时才显示
+                        val shouldShow = if (reportStation.contains("General", ignoreCase = true)) {
+                            true
+                        } else {
+                            // 比较 Report 的车站和当前页面车站名字是否一致
+                            reportStation.equals(currentStationName, ignoreCase = true)
+                        }
+
+                        if (shouldShow) {
+                            // 3. 更新 UI
+                            val displayStation = if (reportStation.contains("General")) "Whole Line" else reportStation
+                            tvTitle.text = "⚠️ $type ($displayStation)"
+                            tvMessage.text = comment
+
+                            alertCard.visibility = View.VISIBLE
+                        }
                     }
                 }
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }
