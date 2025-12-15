@@ -35,7 +35,6 @@ class SearchActivity : AppCompatActivity() {
     private lateinit var adapter: RecentSearchAdapter
     private val stationRepository = StationRepository()
 
-    // 定义 Google 搜索启动器
     private val autocompleteLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -53,7 +52,7 @@ class SearchActivity : AppCompatActivity() {
                 }
             }
             Activity.RESULT_CANCELED -> {
-                // 用户取消搜索，不做操作
+                // User canceled
             }
         }
     }
@@ -72,7 +71,6 @@ class SearchActivity : AppCompatActivity() {
         setupFakeSearchBar()
         setupBackButton()
 
-        // 如果是第一次进入，自动弹出搜索框
         if (savedInstanceState == null) {
             startGoogleSearch()
         }
@@ -90,7 +88,6 @@ class SearchActivity : AppCompatActivity() {
         recyclerView.layoutManager = LinearLayoutManager(this)
 
         adapter = RecentSearchAdapter(historyManager.getHistory()) { clickedPlace ->
-            // 点击历史记录，直接返回结果
             returnResult(clickedPlace.name, clickedPlace.lat, clickedPlace.lng)
         }
         recyclerView.adapter = adapter
@@ -103,7 +100,6 @@ class SearchActivity : AppCompatActivity() {
     }
 
     private fun startGoogleSearch() {
-        // 请求 ID, Name, LatLng, Types
         val fields = listOf(
             Place.Field.ID,
             Place.Field.NAME,
@@ -119,16 +115,11 @@ class SearchActivity : AppCompatActivity() {
         autocompleteLauncher.launch(intent)
     }
 
-    /**
-     * 🔥 核心修改：处理用户选中的地点
-     * 不再对比名字，而是对比坐标距离 (Distance Matching)
-     */
     private fun handleSelectedPlace(place: Place) {
         val googlePlaceName = place.name ?: "Unknown"
         val userLat = place.latLng?.latitude ?: 0.0
         val userLng = place.latLng?.longitude ?: 0.0
 
-        // 1. 初步筛选：是否是交通相关地点 (保留原逻辑作为第一道防线)
         val placeTypes = place.placeTypes ?: emptyList()
         val strictTransportTypes = setOf("transit_station", "bus_station", "train_station", "subway_station", "light_rail_station")
         val transportKeywords = listOf("mrt", "lrt", "ktm", "station", "stesen", "sentral", "terminal", "bus stop")
@@ -137,11 +128,10 @@ class SearchActivity : AppCompatActivity() {
                 transportKeywords.any { googlePlaceName.lowercase().contains(it) }
 
         if (isTransportRelated) {
-            // 开始寻找最近的车站
             lifecycleScope.launch {
                 Toast.makeText(this@SearchActivity, "Finding nearest station...", Toast.LENGTH_SHORT).show()
 
-                // Step A: 准备用户选中的位置对象
+                // Step A: 准备用户选中的位置
                 val selectedLocation = Location("user_selected").apply {
                     latitude = userLat
                     longitude = userLng
@@ -173,24 +163,16 @@ class SearchActivity : AppCompatActivity() {
 
                 // Step D: 处理结果
                 if (nearestStation != null) {
-                    // 🎉 匹配成功！(比如用户选了 Gate A，我们找到了主车站)
                     val officialName = nearestStation.name
                     val services = nearestStation.services
 
                     if (services.isNotEmpty()) {
-                        // 弹出 BottomSheet 供用户选择服务
                         val bottomSheet = ServiceSelectionBottomSheet(officialName, services) { selectedService ->
 
-                            // 保存路线 (使用官方车站坐标，而非用户点击的坐标，这样更准)
-                            ActiveRouteManager.saveRoute(
-                                this@SearchActivity,
-                                officialName,
-                                selectedService.name,
-                                nearestStation.latitude,
-                                nearestStation.longitude
-                            )
+                            // ❌ [DELETE] 这一段被删除了！不要在这里保存路线！
+                            // ActiveRouteManager.saveRoute(...)
 
-                            // 跳转到详情页
+                            // ✅ [KEEP] 只保留跳转逻辑，把数据传给 RouteDetailActivity
                             val intent = Intent(this@SearchActivity, RouteDetailActivity::class.java)
                             intent.putExtra("dest_name", officialName)
                             intent.putExtra("dest_lat", nearestStation.latitude)
@@ -198,7 +180,7 @@ class SearchActivity : AppCompatActivity() {
                             intent.putExtra("service_name", selectedService.name)
                             startActivity(intent)
 
-                            // 保存到历史记录 (显示用户搜的名字，但保存官方坐标)
+                            // 保存搜索历史 (View Only)
                             val recent = RecentPlace(googlePlaceName, place.address ?: "", userLat, userLng)
                             historyManager.savePlace(recent)
                         }
@@ -208,17 +190,15 @@ class SearchActivity : AppCompatActivity() {
                     }
 
                 } else {
-                    //  没找到匹配的车站
+                    // 没找到匹配的车站
                     Toast.makeText(this@SearchActivity, "No supported station found nearby (within 500m).", Toast.LENGTH_LONG).show()
 
-                    // 依旧作为普通地点保存历史
                     val recent = RecentPlace(googlePlaceName, place.address ?: "", userLat, userLng)
                     historyManager.savePlace(recent)
                     returnResult(recent.name, recent.lat, recent.lng)
                 }
             }
         } else {
-            // ❌ 如果选的根本不是车站 (比如选了 KFC)
             Toast.makeText(this, "Please select a valid Transport Station", Toast.LENGTH_LONG).show()
         }
     }

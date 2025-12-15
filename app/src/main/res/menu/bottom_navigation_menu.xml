@@ -2,7 +2,13 @@
     <item
         android:id="@+id/nav_home"
         android:icon="@android:drawable/ic_dialog_map"
-        android:title="@string/live_tracking" />
+        android:title="Map" />
+
+    <item
+        android:id="@+id/nav_nearby"
+        android:icon="@android:drawable/ic_menu_compass"
+        android:title="Nearby Stations" />
+
     <item
         android:id="@+id/nav_report"
         android:icon="@android:drawable/ic_menu_edit"

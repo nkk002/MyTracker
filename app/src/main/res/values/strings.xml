@@ -1,6 +1,5 @@
 <resources>
     <string name="app_name">MyTracker</string>
-    <string name="live_tracking">Live Tracking</string>
     <string name="crowdsource_report">Crowdsource report</string>
     <string name="google_maps_key">AIzaSyDViu5ZFjdMaRu9uANq_kxhlyGCSeoScBA</string>
 </resources>

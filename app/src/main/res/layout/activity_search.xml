@@ -35,14 +35,14 @@
 
             <TextView
                 android:id="@+id/tvSearchInput"
-                android:layout_width="match_parent"
+                android:layout_width="326dp"
                 android:layout_height="match_parent"
+                android:drawablePadding="10dp"
                 android:gravity="center_vertical"
                 android:paddingStart="16dp"
                 android:text="Search destination..."
                 android:textColor="@android:color/darker_gray"
                 android:textSize="16sp"
-                android:drawablePadding="10dp"
                 app:drawableStartCompat="@android:drawable/ic_menu_search" />
 
         </androidx.cardview.widget.CardView>

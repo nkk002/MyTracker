@@ -23,6 +23,8 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.mmu.mytracker.R
 import com.mmu.mytracker.ui.view.fragment.ReportBottomSheetFragment
 import com.mmu.mytracker.utils.ActiveRouteManager
+import android.widget.FrameLayout
+import com.mmu.mytracker.ui.view.fragment.NearbyFragment
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -97,20 +99,59 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun setupBottomNavigation() {
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
 
+        // 获取界面上的 View
+        val mapFragmentView = findViewById<View>(R.id.mapFragment)
+        val fragmentContainer = findViewById<FrameLayout>(R.id.fragment_container)
+        val searchCard = findViewById<CardView>(R.id.search_card)
+        val liveTrackingCard = findViewById<CardView>(R.id.cardLiveTracking) // 获取旧的卡片，切页面时最好隐藏它
+
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
-                R.id.nav_home -> { // Live Tracking
-                    // 已经在主页了，不需要做额外操作，或者可以将地图视角移回当前位置
+                // 🗺️ 情况 1: 点击地图 (Home)
+                R.id.nav_home -> {
+                    // 显示地图和搜索栏
+                    mapFragmentView.visibility = View.VISIBLE
+                    searchCard.visibility = View.VISIBLE
+
+                    // 隐藏 Nearby 页面
+                    fragmentContainer.visibility = View.GONE
+
+                    // 如果有正在进行的路线，恢复显示 Live Tracking Card (可选)
+                    val routeData = ActiveRouteManager.getRoute(this)
+                    if (routeData != null) {
+                        liveTrackingCard.visibility = View.VISIBLE
+                    }
                     true
                 }
-                R.id.nav_report -> { // Crowdsource Report
-                    // 弹出报告窗口
+
+                // 🚉 情况 2: 点击 Nearby Stations (新增)
+                R.id.nav_nearby -> {
+                    // 隐藏地图、搜索栏和悬浮卡片
+                    mapFragmentView.visibility = View.GONE
+                    searchCard.visibility = View.GONE
+                    liveTrackingCard.visibility = View.GONE
+
+                    // 显示 Nearby 容器
+                    fragmentContainer.visibility = View.VISIBLE
+
+                    // 加载 NearbyFragment
+                    // 注意：为了避免重复加载，可以先判断是否已经添加
+                    val existingFragment = supportFragmentManager.findFragmentByTag("NearbyFragment")
+                    if (existingFragment == null) {
+                        supportFragmentManager.beginTransaction()
+                            .replace(R.id.fragment_container, NearbyFragment(), "NearbyFragment")
+                            .commit()
+                    }
+                    true
+                }
+
+                // 📝 情况 3: 点击 Report
+                R.id.nav_report -> {
                     val bottomSheet = ReportBottomSheetFragment()
                     bottomSheet.show(supportFragmentManager, "ReportBottomSheet")
-                    // 返回 false 表示虽然点击了，但不切换选中状态 (或者你可以根据需求让它选中)
-                    // 这里我们返回 false，让它保持在 "Live Tracking" 选中状态，因为 Report 只是个弹窗
-                    false
+                    false // 返回 false 表示不选中这个 tab，只弹窗
                 }
+
                 else -> false
             }
         }
