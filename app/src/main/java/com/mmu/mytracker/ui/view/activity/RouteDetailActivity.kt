@@ -124,25 +124,37 @@ class RouteDetailActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 transportRepository.observeRealTimeReports(userSelectedLine).collect { report ->
                     if (report != null) {
-                        // 1. 获取报告里的车站信息
                         val reportStation = report["station"] as? String ?: "General"
                         val type = report["crowdLevel"] as? String ?: "Alert"
                         val comment = report["comment"] as? String ?: ""
 
-                        // 2. 🔥 过滤逻辑：
-                        // - 如果是 "General (Whole Line)"，或者是针对 "General" 的 -> 全线显示
-                        // - 如果是特定车站 -> 只有名字匹配时才显示
+                        // 🔥 1. 获取时间戳
+                        val timestamp = report["timestamp"] as? Long ?: System.currentTimeMillis()
+
+                        // 🔥 2. 计算“几分钟前”
+                        val currentTime = System.currentTimeMillis()
+                        val diffMillis = currentTime - timestamp
+                        val minsAgo = diffMillis / (1000 * 60) // 毫秒转分钟
+
+                        val timeDisplay = if (minsAgo < 1) {
+                            "Just now"
+                        } else {
+                            "$minsAgo mins ago"
+                        }
+
+                        // 过滤逻辑 (General 或 车站匹配)
                         val shouldShow = if (reportStation.contains("General", ignoreCase = true)) {
                             true
                         } else {
-                            // 比较 Report 的车站和当前页面车站名字是否一致
                             reportStation.equals(currentStationName, ignoreCase = true)
                         }
 
                         if (shouldShow) {
-                            // 3. 更新 UI
                             val displayStation = if (reportStation.contains("General")) "Whole Line" else reportStation
-                            tvTitle.text = "⚠️ $type ($displayStation)"
+
+                            // 🔥 3. 把时间显示在标题里
+                            // 效果: ⚠️ High Crowd (Kajang Stn) • 5 mins ago
+                            tvTitle.text = "⚠️ $type ($displayStation) • $timeDisplay"
                             tvMessage.text = comment
 
                             alertCard.visibility = View.VISIBLE
@@ -150,8 +162,6 @@ class RouteDetailActivity : AppCompatActivity() {
                     }
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { }
     }
 }

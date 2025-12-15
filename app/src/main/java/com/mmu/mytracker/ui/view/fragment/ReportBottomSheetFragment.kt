@@ -26,7 +26,7 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
     private lateinit var btnSubmit: Button
 
     // 预设路线列表
-    private val lines = listOf("MRT Kajang Line", "MRT Putrajaya Line")
+    private val lines = listOf("Select Line","MRT Kajang Line", "MRT Putrajaya Line")
 
     // 缓存所有车站数据，避免每次选择都去下载
     private var allStationsCache: List<com.mmu.mytracker.data.model.Station> = emptyList()
