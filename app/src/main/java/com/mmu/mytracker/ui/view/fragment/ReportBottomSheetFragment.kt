@@ -24,6 +24,7 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
     private lateinit var radioGroup: RadioGroup
     private lateinit var etComment: EditText
     private lateinit var btnSubmit: Button
+    private lateinit var etDelayTime: EditText
 
     // 预设路线列表
     private val lines = listOf("Select Line","MRT Kajang Line", "MRT Putrajaya Line")
@@ -41,6 +42,7 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
         spinnerLine = view.findViewById(R.id.spinnerLine)
         spinnerStation = view.findViewById(R.id.spinnerStation) // 绑定 XML 里的 ID
         radioGroup = view.findViewById(R.id.radioGroupCrowd)
+        etDelayTime = view.findViewById(R.id.etDelayTime)
         etComment = view.findViewById(R.id.etComments) // 注意 XML 里是 etComments
         btnSubmit = view.findViewById(R.id.btnSubmitReport)
 
@@ -122,11 +124,13 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
             else -> "Medium"
         }
 
+        val delay = etDelayTime.text.toString().ifEmpty { "0" }
+
         val comment = etComment.text.toString()
 
         lifecycleScope.launch {
             // 6. 调用 Repository 提交，多传一个 station 参数
-            val success = transportRepository.submitReport(line, station, crowdLevel, comment)
+            val success = transportRepository.submitReport(line, station, crowdLevel, delay, comment)
             if (success) {
                 Toast.makeText(context, "Report submitted!", Toast.LENGTH_SHORT).show()
                 dismiss()

@@ -80,7 +80,13 @@ class TransportRepository {
     /**
      * 提交详细的用户报告
      */
-    suspend fun submitReport(line: String, station: String, crowd: String, comment: String): Boolean {
+    suspend fun submitReport(
+        line: String,
+        station: String,
+        crowd: String,
+        delay: String,
+        comment: String,
+    ): Boolean {
         return try {
             val reportId = reportsRef.push().key ?: return false
 
@@ -89,6 +95,7 @@ class TransportRepository {
                 "transportLine" to line,
                 "station" to station, // 🔥 保存车站名字
                 "crowdLevel" to crowd,
+                "delayTime" to delay,
                 "comment" to comment,
                 "timestamp" to System.currentTimeMillis()
             )
