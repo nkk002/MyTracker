@@ -35,7 +35,7 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
         // 2. 设置下拉菜单的数据 (Adapter)
         // 路线列表
         // 确保这些名字和你 Search 结果里出来的名字完全一致！
-        val lines = arrayOf("LRT Kelana Jaya Line", "MRT Kajang Line", "Bus 780", "Bus 300", "KL Monorail")
+        val lines = arrayOf("MRT Kajang Line", "Bus 780", "Bus 300")
         val lineAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, lines)
         spinnerLine.adapter = lineAdapter
 
