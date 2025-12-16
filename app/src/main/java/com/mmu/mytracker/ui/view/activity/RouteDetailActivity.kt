@@ -2,29 +2,28 @@ package com.mmu.mytracker.ui.view.activity
 
 import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.mmu.mytracker.R
 import com.mmu.mytracker.data.remote.repository.StationRepository
 import com.mmu.mytracker.data.remote.repository.TransportRepository
+import com.mmu.mytracker.ui.adapter.AlertAdapter // 记得 Import 新建的 Adapter
 import com.mmu.mytracker.utils.ActiveRouteManager
 import com.mmu.mytracker.utils.TimeUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import android.text.Spannable
-import android.text.SpannableStringBuilder
-import android.text.style.StyleSpan
-import android.graphics.Typeface
 
 class RouteDetailActivity : AppCompatActivity() {
 
@@ -33,10 +32,9 @@ class RouteDetailActivity : AppCompatActivity() {
     private var destLat: Double = 0.0
     private var destLng: Double = 0.0
 
-    // 🔥 1. 新增变量：用来控制自动过期的定时器
-    private val expirationHandler = Handler(Looper.getMainLooper())
-    private var expirationRunnable: Runnable? = null
-    private var currentAlertTimestamp: Long = 0L // 记录当前显示警报的时间
+    // 🔥 新增变量：Adapter 和 RecyclerView
+    private lateinit var alertAdapter: AlertAdapter
+    private lateinit var recyclerAlerts: RecyclerView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,6 +45,7 @@ class RouteDetailActivity : AppCompatActivity() {
         destLat = intent.getDoubleExtra("dest_lat", 0.0)
         destLng = intent.getDoubleExtra("dest_lng", 0.0)
 
+        // UI 初始化
         findViewById<TextView>(R.id.tvHeaderTitle).text = destName
         findViewById<TextView>(R.id.tvServiceName).text = serviceName
 
@@ -60,181 +59,99 @@ class RouteDetailActivity : AppCompatActivity() {
             finish()
         }
 
-        // 监听警报
+        // 🔥 1. 初始化 RecyclerView
+        recyclerAlerts = findViewById(R.id.recyclerAlerts)
+        recyclerAlerts.layoutManager = LinearLayoutManager(this)
+        alertAdapter = AlertAdapter(emptyList()) // 初始为空
+        recyclerAlerts.adapter = alertAdapter
+
+        // 启动逻辑
         startListeningForAlerts(serviceName, destName)
-
-        // 获取时间表
         fetchStationDetailsAndCalculateTime(destName, serviceName)
+
+        // 🔥 2. 启动每分钟刷新一次 UI (为了更新 "x mins ago")
+        startAutoRefreshAdapter()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        // 退出页面时，销毁定时器，防止内存泄漏
-        expirationRunnable?.let { expirationHandler.removeCallbacks(it) }
-    }
-
+    // 这个函数保持不变
     private fun fetchStationDetailsAndCalculateTime(stationName: String, serviceName: String) {
+        // ... (保持原本的逻辑) ...
         val tvNextTrain = findViewById<TextView>(R.id.tvNextTrain)
         val tvArrival = findViewById<TextView>(R.id.tvArrival)
-
         tvNextTrain.text = "Loading..."
         tvArrival.text = "--:--"
 
         lifecycleScope.launch {
             try {
-                val allStations = withContext(Dispatchers.IO) {
-                    stationRepository.getAllStations()
-                }
+                val allStations = withContext(Dispatchers.IO) { stationRepository.getAllStations() }
                 val station = allStations.find { it.name == stationName }
-
                 if (station != null) {
                     val service = station.services.find {
                         it.name.equals(serviceName, ignoreCase = true) ||
                                 it.type.equals(serviceName, ignoreCase = true) ||
                                 serviceName.contains(it.type, ignoreCase = true)
                     }
-
                     if (service != null) {
                         val mins = TimeUtils.getMinutesUntilNextTrain(service.first_train, service.frequency_min)
                         val timeStr = TimeUtils.formatTimeDisplay(mins)
                         tvNextTrain.text = timeStr
-
                         if (mins >= 0) {
-                            val malaysiaZone = ZoneId.of("Asia/Kuala_Lumpur")
-                            val now = LocalTime.now(malaysiaZone)
+                            val now = LocalTime.now(ZoneId.of("Asia/Kuala_Lumpur"))
                             val arrivalTime = now.plusMinutes(mins)
-                            val formatter = DateTimeFormatter.ofPattern("hh:mm a")
-                            tvArrival.text = arrivalTime.format(formatter)
-                        } else {
-                            tvArrival.text = "N/A"
-                        }
-
-                    } else {
-                        tvNextTrain.text = "--"
-                        tvArrival.text = "--"
-                    }
+                            tvArrival.text = arrivalTime.format(DateTimeFormatter.ofPattern("hh:mm a"))
+                        } else { tvArrival.text = "N/A" }
+                    } else { tvNextTrain.text = "--"; tvArrival.text = "--" }
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                tvNextTrain.text = "Err"
-                tvArrival.text = "Err"
-            }
+            } catch (e: Exception) { e.printStackTrace() }
         }
     }
 
     private fun startListeningForAlerts(userSelectedLine: String, currentStationName: String) {
-        try {
-            val alertCard = findViewById<CardView>(R.id.cardAlert) ?: return
-            val tvTitle = findViewById<TextView>(R.id.tvAlertTitle)
-            val tvMessage = findViewById<TextView>(R.id.tvAlertMessage)
-            val btnClose = findViewById<ImageButton>(R.id.btnCloseAlert)
+        lifecycleScope.launch {
+            // 注意：TransportRepository.observeRealTimeReports 需要返回 List<Map>
+            // 之前的步骤里我们已经把它改成了 return List
+            transportRepository.observeRealTimeReports(userSelectedLine).collect { allReports ->
 
-            btnClose.setOnClickListener { alertCard.visibility = View.GONE }
+                // 1. 筛选 (General 或 当前车站)
+                val relevantReports = allReports.filter { report ->
+                    val station = report["station"] as? String ?: "General"
+                    val timestamp = report["timestamp"] as? Long ?: 0L
 
-            // 🔥 2. 启动自动检查循环
-            startExpirationCheckLoop(alertCard)
+                    // 检查是否过期 (30分钟)
+                    val isNotExpired = (System.currentTimeMillis() - timestamp) < (30 * 60 * 1000)
 
-            lifecycleScope.launch {
-                transportRepository.observeRealTimeReports(userSelectedLine).collect { report ->
-                    if (report != null) {
-                        val reportStation = report["station"] as? String ?: "General"
-                        val type = report["crowdLevel"] as? String ?: "Alert"
-                        val comment = report["comment"] as? String ?: ""
-                        val timestamp = report["timestamp"] as? Long ?: System.currentTimeMillis()
-                        val delay = report["delayTime"] as? String ?: "0"
+                    val isMatch = station.contains("General", ignoreCase = true) ||
+                            station.equals(currentStationName, ignoreCase = true)
 
-                        // 🔥 3. 记录当前警报的时间戳
-                        currentAlertTimestamp = timestamp
-
-                        // 计算“几分钟前”
-                        val currentTime = System.currentTimeMillis()
-                        val diffMillis = currentTime - timestamp
-                        val minsAgo = diffMillis / (1000 * 60)
-
-                        // 🔴 核心判断：如果已经超过 30 分钟，直接忽略，根本不显示
-                        if (minsAgo > 30) {
-                            alertCard.visibility = View.GONE
-                            return@collect
-                        }
-
-                        val timeDisplay = if (minsAgo < 1) "Just now" else "$minsAgo mins ago"
-
-                        // 过滤逻辑
-                        val shouldShow = if (reportStation.contains("General", ignoreCase = true)) {
-                            true
-                        } else {
-                            reportStation.equals(currentStationName, ignoreCase = true)
-                        }
-
-                        if (shouldShow) {
-                            val displayStation = if (reportStation.contains("General")) "Whole Line" else reportStation
-
-                            // 🔥 优化显示格式
-                            // 标题: ⚠️ Crowd: High (Station) • 5 mins ago
-                            tvTitle.text = "⚠️ Crowd level: $type • $timeDisplay\n"
-
-                            // 内容: Comment (+ 10 mins delay)
-                            val builder = SpannableStringBuilder()
-
-                            // 2. 先放入普通的 comment
-                            builder.append(comment)
-                            builder.append("\n") // 换行
-
-                            // 3. 记录开始变粗的位置
-                            val start = builder.length
-
-                            // 4. 放入要变粗的文字
-                            builder.append("\n(Estimate Delay: +$delay mins)")
-
-                            // 5. 设置粗体 (Bold)
-                            builder.setSpan(
-                                StyleSpan(Typeface.BOLD),
-                                start,
-                                builder.length,
-                                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                            )
-
-                            // 6. 显示出来
-                            tvMessage.text = builder
-
-                            if (alertCard.visibility == View.GONE) {
-                                alertCard.visibility = View.VISIBLE
-                                alertCard.alpha = 0f
-                                alertCard.animate().alpha(1f).duration = 300
-                            }
-                        }
-                    }
+                    isMatch && isNotExpired
                 }
-            }
-        } catch (e: Exception) { }
-    }
 
-    // 🔥 4. 自动过期检查逻辑
-    private fun startExpirationCheckLoop(alertCard: CardView) {
-        expirationRunnable = object : Runnable {
-            override fun run() {
-                try {
-                    // 如果当前没有在显示警报，就不需要检查
-                    if (alertCard.visibility == View.VISIBLE && currentAlertTimestamp > 0) {
+                // 2. 🔥 排序：最新的在上面 (Descending)
+                val sortedReports = relevantReports.sortedByDescending {
+                    it["timestamp"] as? Long ?: 0L
+                }
 
-                        val now = System.currentTimeMillis()
-                        val diffMinutes = (now - currentAlertTimestamp) / (1000 * 60)
-
-                        // 如果超过 30 分钟 -> 自动消失
-                        if (diffMinutes > 30) {
-                            alertCard.visibility = View.GONE
-                            // 也可以选择不移除回调，继续跑，等待下一个警报
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                } finally {
-                    // 每 60 秒 (1分钟) 检查一次
-                    expirationHandler.postDelayed(this, 60000)
+                // 3. 更新 UI
+                if (sortedReports.isNotEmpty()) {
+                    recyclerAlerts.visibility = View.VISIBLE
+                    alertAdapter.updateList(sortedReports)
+                } else {
+                    recyclerAlerts.visibility = View.GONE
                 }
             }
         }
-        // 立即启动
-        expirationHandler.post(expirationRunnable!!)
+    }
+
+    // 🔥 3. 自动刷新时间显示的简单实现
+    private fun startAutoRefreshAdapter() {
+        lifecycleScope.launch {
+            while (isActive) { // 只要页面还在
+                delay(60000) // 等 60 秒
+                if (::alertAdapter.isInitialized && recyclerAlerts.visibility == View.VISIBLE) {
+                    // 通知 Adapter 刷新界面 (更新 x mins ago)
+                    alertAdapter.notifyDataSetChanged()
+                }
+            }
+        }
     }
 }

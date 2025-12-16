@@ -154,32 +154,26 @@ class TransportRepository {
      * 实时监听特定路线的报告 (Waze-style Alert 核心)
      * @param targetLine 用户当前关注的路线，例如 "MRT Kajang Line"
      */
-    fun observeRealTimeReports(targetLine: String): Flow<Map<String, Any>?> = callbackFlow {
-        // 只监听最近 30 分钟内的报告 (避免旧新闻弹出)
+    fun observeRealTimeReports(targetLine: String): kotlinx.coroutines.flow.Flow<List<Map<String, Any>>> = kotlinx.coroutines.flow.callbackFlow {
+        // 监听 30 分钟内的数据
         val thirtyMinsAgo = System.currentTimeMillis() - (30 * 60 * 1000)
-
         val query = reportsRef.orderByChild("timestamp").startAt(thirtyMinsAgo.toDouble())
 
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                Log.d("DEBUG_WAZE", "Snapshot received: ${snapshot.childrenCount} items") // 新增 Log
+                val list = mutableListOf<Map<String, Any>>()
                 for (child in snapshot.children) {
-                    val reportLine = child.child("transportLine").getValue(String::class.java)
-                    Log.d("DEBUG_WAZE", "Checking report line: $reportLine vs Target: $targetLine") // 新增 Log
-
-                    if (reportLine == targetLine) {
-                        Log.d("DEBUG_WAZE", "MATCH FOUND!") // 新增 Log
-                        val reportData = child.value as? Map<String, Any>
-                        trySend(reportData)
+                    val line = child.child("transportLine").getValue(String::class.java)
+                    if (line == targetLine) {
+                        val data = child.value as? Map<String, Any>
+                        if (data != null) list.add(data)
                     }
                 }
+                // 🔥 重点：把整个 List 发送出去
+                trySend(list)
             }
-
-            override fun onCancelled(error: DatabaseError) {
-                close(error.toException())
-            }
+            override fun onCancelled(error: DatabaseError) { close(error.toException()) }
         }
-
         query.addValueEventListener(listener)
         awaitClose { query.removeEventListener(listener) }
     }
