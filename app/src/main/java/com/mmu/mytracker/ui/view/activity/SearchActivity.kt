@@ -87,10 +87,31 @@ class SearchActivity : AppCompatActivity() {
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerRecentSearches)
         recyclerView.layoutManager = LinearLayoutManager(this)
 
-        adapter = RecentSearchAdapter(historyManager.getHistory()) { clickedPlace ->
-            returnResult(clickedPlace.name, clickedPlace.lat, clickedPlace.lng)
-        }
+        // 初始化 Adapter
+        adapter = RecentSearchAdapter(
+            historyManager.getHistory().toMutableList(),
+            onItemClick = { clickedPlace ->
+                // 🔥 1. 点击历史记录 -> 触发像 Google Search 一样的逻辑
+                handleHistoryClick(clickedPlace)
+            },
+            onDeleteClick = { placeToDelete ->
+                // 🔥 2. 点击删除 -> 从 SharedPrefs 移除
+                historyManager.removePlace(placeToDelete) // 记得在 Manager 里加这个方法
+                adapter.updateData(historyManager.getHistory())
+            }
+        )
         recyclerView.adapter = adapter
+    }
+
+    private fun handleHistoryClick(recentPlace: RecentPlace) {
+        val fakePlace = Place.builder()
+            .setName(recentPlace.name)
+            .setAddress(recentPlace.address)
+            .setLatLng(com.google.android.gms.maps.model.LatLng(recentPlace.lat, recentPlace.lng))
+            .setPlaceTypes(listOf("transit_station")) // 假装它是车站，触发后续逻辑
+            .build()
+
+        handleSelectedPlace(fakePlace)
     }
 
     private fun setupFakeSearchBar() {
