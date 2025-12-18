@@ -10,7 +10,6 @@ class StationRepository {
 
     private val db = FirebaseFirestore.getInstance()
 
-    // 🔥 新增方法：获取所有车站数据（包含坐标和服务）
     suspend fun getAllStations(): List<Station> {
         return try {
             val snapshot = db.collection("stations").get().await()
@@ -18,10 +17,10 @@ class StationRepository {
             // 前提是你的 Firestore 字段名 (latitude, longitude, services) 和 Station data class 一致
             val stations = snapshot.toObjects(Station::class.java)
 
-            Log.d("StationRepo", "成功获取 ${stations.size} 个车站数据")
+            Log.d("StationRepo", "Successfully fetched ${stations.size} stations of data")
             stations
         } catch (e: Exception) {
-            Log.e("StationRepo", "获取车站列表失败: ${e.message}")
+            Log.e("StationRepo", "Failed to fetch stations: ${e.message}")
             emptyList()
         }
     }
