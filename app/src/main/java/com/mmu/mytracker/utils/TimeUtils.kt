@@ -32,6 +32,18 @@ object TimeUtils {
         }
     }
 
+    fun getNextThreeTrains(firstTrainStr: String?, freq: Int): List<Long> {
+        val firstMins = getMinutesUntilNextTrain(firstTrainStr, freq)
+
+        if (firstMins == -1L) return emptyList()
+
+        return listOf(
+            firstMins,              // 下一班
+            firstMins + freq,       // 第二班
+            firstMins + (2 * freq)  // 第三班
+        )
+    }
+
     fun formatTimeDisplay(minutes: Long): String {
         return if (minutes >= 0) "$minutes mins" else "-- mins"
     }

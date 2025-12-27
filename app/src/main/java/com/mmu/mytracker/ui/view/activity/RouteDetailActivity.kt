@@ -75,34 +75,77 @@ class RouteDetailActivity : AppCompatActivity() {
 
     // 这个函数保持不变
     private fun fetchStationDetailsAndCalculateTime(stationName: String, serviceName: String) {
-        // ... (保持原本的逻辑) ...
-        val tvNextTrain = findViewById<TextView>(R.id.tvNextTrain)
-        val tvArrival = findViewById<TextView>(R.id.tvArrival)
-        tvNextTrain.text = "Loading..."
-        tvArrival.text = "--:--"
+        // 绑定 3 组 View
+        val tvTrain1Count = findViewById<TextView>(R.id.tvTrain1Countdown)
+        val tvTrain1Arr = findViewById<TextView>(R.id.tvTrain1Arrival)
+
+        val tvTrain2Count = findViewById<TextView>(R.id.tvTrain2Countdown)
+        val tvTrain2Arr = findViewById<TextView>(R.id.tvTrain2Arrival)
+
+        val tvTrain3Count = findViewById<TextView>(R.id.tvTrain3Countdown)
+        val tvTrain3Arr = findViewById<TextView>(R.id.tvTrain3Arrival)
+        tvTrain1Count.text = "..."
+        tvTrain1Arr.text = "--:--"
 
         lifecycleScope.launch {
             try {
-                val allStations = withContext(Dispatchers.IO) { stationRepository.getAllStations() }
+                val allStations = withContext(Dispatchers.IO) {
+                    stationRepository.getAllStations()
+                }
                 val station = allStations.find { it.name == stationName }
+
                 if (station != null) {
                     val service = station.services.find {
                         it.name.equals(serviceName, ignoreCase = true) ||
                                 it.type.equals(serviceName, ignoreCase = true) ||
                                 serviceName.contains(it.type, ignoreCase = true)
                     }
+
                     if (service != null) {
-                        val mins = TimeUtils.getMinutesUntilNextTrain(service.first_train, service.frequency_min)
-                        val timeStr = TimeUtils.formatTimeDisplay(mins)
-                        tvNextTrain.text = timeStr
-                        if (mins >= 0) {
-                            val now = LocalTime.now(ZoneId.of("Asia/Kuala_Lumpur"))
-                            val arrivalTime = now.plusMinutes(mins)
-                            tvArrival.text = arrivalTime.format(DateTimeFormatter.ofPattern("hh:mm a"))
-                        } else { tvArrival.text = "N/A" }
-                    } else { tvNextTrain.text = "--"; tvArrival.text = "--" }
+                        // 🔥 1. 获取未来 3 班车 (List)
+                        val nextTrains = TimeUtils.getNextThreeTrains(service.first_train, service.frequency_min)
+
+                        val malaysiaZone = ZoneId.of("Asia/Kuala_Lumpur")
+                        val now = LocalTime.now(malaysiaZone)
+                        val formatter = DateTimeFormatter.ofPattern("hh:mm a")
+
+                        // 🔥 2. 分别填充3个卡片
+                        // 卡片 1 (Next)
+                        if (nextTrains.isNotEmpty()) {
+                            tvTrain1Count.text = TimeUtils.formatTimeDisplay(nextTrains[0])
+                            tvTrain1Arr.text = if (nextTrains[0] >= 0) now.plusMinutes(nextTrains[0]).format(formatter) else "N/A"
+                        } else {
+                            tvTrain1Count.text = "--"
+                            tvTrain1Arr.text = "--"
+                        }
+
+                        // 卡片 2 (2nd)
+                        if (nextTrains.size >= 2) {
+                            tvTrain2Count.text = TimeUtils.formatTimeDisplay(nextTrains[1])
+                            tvTrain2Arr.text = if (nextTrains[1] >= 0) now.plusMinutes(nextTrains[1]).format(formatter) else "N/A"
+                        } else {
+                            tvTrain2Count.text = "--"
+                            tvTrain2Arr.text = "--"
+                        }
+
+                        // 卡片 3 (3rd)
+                        if (nextTrains.size >= 3) {
+                            tvTrain3Count.text = TimeUtils.formatTimeDisplay(nextTrains[2])
+                            tvTrain3Arr.text = if (nextTrains[2] >= 0) now.plusMinutes(nextTrains[2]).format(formatter) else "N/A"
+                        } else {
+                            tvTrain3Count.text = "--"
+                            tvTrain3Arr.text = "--"
+                        }
+
+                    } else {
+                        // 没有服务数据
+                        tvTrain1Count.text = "--"
+                    }
                 }
-            } catch (e: Exception) { e.printStackTrace() }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                tvTrain1Count.text = "Err"
+            }
         }
     }
 
