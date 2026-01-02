@@ -94,6 +94,9 @@ dependencies {
     implementation(libs.androidx.cardview)
     implementation(libs.androidx.recyclerview) // 包含布局用的 ConstraintLayout
 
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+
     // 单元测试 (系统默认保留)
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

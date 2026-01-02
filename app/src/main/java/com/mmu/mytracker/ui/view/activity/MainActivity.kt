@@ -3,139 +3,297 @@ package com.mmu.mytracker.ui.view.activity
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.location.Location
 import android.os.Bundle
+import android.os.Looper
+import android.util.Log
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.app.ActivityCompat
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationServices
+import androidx.lifecycle.lifecycleScope
+import com.google.android.gms.location.*
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.*
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.mmu.mytracker.R
+import com.mmu.mytracker.data.remote.api.RetrofitInstance
+import com.mmu.mytracker.ui.view.fragment.NearbyFragment
 import com.mmu.mytracker.ui.view.fragment.ReportBottomSheetFragment
 import com.mmu.mytracker.utils.ActiveRouteManager
-import android.widget.FrameLayout
-import com.mmu.mytracker.ui.view.fragment.NearbyFragment
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private lateinit var map: GoogleMap
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
+    // Tracking UI 变量
+    private lateinit var cardTracking: CardView
+    private lateinit var tvStationName: TextView
+    private lateinit var tvDistance: TextView
+    private lateinit var tvEta: TextView
+    private lateinit var btnClose: ImageButton
+
+    // Tracking 状态变量
+    private var locationCallback: LocationCallback? = null
+    private var currentDestinationMarker: Marker? = null
+    private var currentRouteLine: Polyline? = null
+
+    // 🔥 防止重复请求 API 的标记
+    private var isRouteFetched = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // 1. 初始化地图
-        val mapFragment = supportFragmentManager
-            .findFragmentById(R.id.mapFragment) as SupportMapFragment
+        val mapFragment = supportFragmentManager.findFragmentById(R.id.mapFragment) as SupportMapFragment
         mapFragment.getMapAsync(this)
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
-        // 2. 初始化各UI组件
-        setupSearchBar()
-        setupLiveTrackingCard()
-        setupBottomNavigation() // 🔥 新增：设置底部导航栏逻辑
+        setupUI()
+        setupBottomNavigation()
+    }
+
+    private fun setupUI() {
+        // Search Bar
+        val cardSearch = findViewById<CardView>(R.id.search_card)
+        cardSearch?.setOnClickListener {
+            startActivity(Intent(this, SearchActivity::class.java))
+        }
+
+        // Tracking Card
+        cardTracking = findViewById(R.id.cardLiveTracking)
+        tvStationName = findViewById(R.id.tvLiveStationName)
+        tvDistance = findViewById(R.id.tvLiveDistance)
+        tvEta = findViewById(R.id.tvLiveEta)
+        btnClose = findViewById(R.id.btnCloseLive)
+
+        btnClose.setOnClickListener { stopTracking() }
     }
 
     override fun onResume() {
         super.onResume()
-        // 每次回到主页，检查是否有保存的路线，如果有则显示 Live Tracking 卡片
-        updateLiveTrackingCard()
-
-        // 确保选中 Live Tracking 选项 (因为我们在这个页面)
-        val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
-        bottomNav.selectedItemId = R.id.nav_home
+        checkActiveTracking()
     }
 
-    // --- 🗺️ 地图逻辑 ---
+    private fun checkActiveTracking() {
+        val route = ActiveRouteManager.getRoute(this)
+
+        if (route != null) {
+            val name = route["destName"] as? String ?: "Unknown Station"
+            cardTracking.visibility = View.VISIBLE
+            tvStationName.text = name
+            startLocationUpdates()
+        } else {
+            cardTracking.visibility = View.GONE
+            stopLocationUpdates()
+        }
+    }
+
+    private fun stopTracking() {
+        ActiveRouteManager.clearRoute(this)
+        cardTracking.visibility = View.GONE
+        stopLocationUpdates()
+
+        currentDestinationMarker?.remove()
+        currentDestinationMarker = null
+        currentRouteLine?.remove()
+        currentRouteLine = null
+        isRouteFetched = false // 重置，下次可以重新请求
+
+        Toast.makeText(this, "Navigation Stopped", Toast.LENGTH_SHORT).show()
+    }
+
     override fun onMapReady(googleMap: GoogleMap) {
         map = googleMap
-        enableMyLocation()
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            map.isMyLocationEnabled = true
+        }
+        checkActiveTracking()
     }
 
-    private fun enableMyLocation() {
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
-            map.isMyLocationEnabled = true
-            fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
-                if (location != null) {
-                    val currentLatLng = LatLng(location.latitude, location.longitude)
-                    map.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 15f))
+    private fun startLocationUpdates() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+
+        if (locationCallback == null) {
+            locationCallback = object : LocationCallback() {
+                override fun onLocationResult(locationResult: LocationResult) {
+                    val location = locationResult.lastLocation ?: return
+                    updateTrackingLogic(location)
                 }
             }
-        } else {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                1001
-            )
+            val request = LocationRequest.create().apply {
+                interval = 5000
+                fastestInterval = 2000
+                priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+            }
+            fusedLocationClient.requestLocationUpdates(request, locationCallback!!, Looper.getMainLooper())
         }
     }
 
-    // --- 🔍 搜索栏逻辑 ---
-    private fun setupSearchBar() {
-        val searchCard = findViewById<CardView>(R.id.search_card)
-        searchCard.setOnClickListener {
-            val intent = Intent(this, SearchActivity::class.java)
-            startActivity(intent)
+    private fun stopLocationUpdates() {
+        locationCallback?.let {
+            fusedLocationClient.removeLocationUpdates(it)
+            locationCallback = null
         }
     }
 
-    // --- 🧭 底部导航栏逻辑 ---
+    private fun updateTrackingLogic(userLoc: Location) {
+        val route = ActiveRouteManager.getRoute(this) ?: return
+
+        val destLat = route["destLat"] as? Double ?: 0.0
+        val destLng = route["destLng"] as? Double ?: 0.0
+        val name = route["destName"] as? String ?: "Station"
+
+        val destLoc = Location("destination").apply { latitude = destLat; longitude = destLng }
+
+        // 1. 只更新距离 (本地计算距离非常快且免费)
+        val distanceMeters = userLoc.distanceTo(destLoc)
+        val distanceKm = distanceMeters / 1000
+        tvDistance.text = String.format("%.2f km", distanceKm)
+
+        // ❌ 删除或注释掉下面这两行 (这就是导致时间不准的罪魁祸首！)
+        // val etaMins = (distanceMeters / 500).toInt()
+        // tvEta.text = if (etaMins < 1) "Arriving" else "$etaMins min"
+
+        // 2. 地图操作
+        if (::map.isInitialized) {
+            val userLatLng = LatLng(userLoc.latitude, userLoc.longitude)
+            val destLatLng = LatLng(destLat, destLng)
+
+            if (currentDestinationMarker == null) {
+                currentDestinationMarker = map.addMarker(
+                    MarkerOptions().position(destLatLng).title(name)
+                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
+                )
+                map.animateCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, 15f))
+            }
+
+            // 🔥 如果还没获取过路线，去请求 API
+            if (!isRouteFetched) {
+                fetchAndDrawRoute(userLatLng, destLatLng)
+            }
+        }
+    }
+
+    // 🔥 核心：请求 Directions API 并显示真实时间
+    private fun fetchAndDrawRoute(origin: LatLng, dest: LatLng) {
+        isRouteFetched = true
+
+        val originStr = "${origin.latitude},${origin.longitude}"
+        val destStr = "${dest.latitude},${dest.longitude}"
+        val apiKey = getString(R.string.google_maps_key)
+
+        lifecycleScope.launch {
+            try {
+                // 调用 API (确保 DirectionsApiService 里的 mode="driving" 或 "walking")
+                val response = RetrofitInstance.api.getDirections(originStr, destStr, apiKey)
+
+                if (response.isSuccessful && response.body() != null) {
+                    val routes = response.body()!!.routes
+                    if (routes.isNotEmpty()) {
+                        val route = routes[0]
+
+                        // 1. 画线
+                        val encodedString = route.overviewPolyline.points
+                        val path = decodePolyline(encodedString)
+
+                        if (currentRouteLine != null) currentRouteLine?.remove()
+                        val polylineOptions = PolylineOptions()
+                            .addAll(path)
+                            .width(15f)
+                            .color(Color.BLUE)
+                            .geodesic(true)
+                        currentRouteLine = map.addPolyline(polylineOptions)
+
+                        // 🔥 2. 获取 Google 计算的精准时间
+                        if (route.legs.isNotEmpty()) {
+                            val leg = route.legs[0]
+                            val googleDuration = leg.duration.text // 例如 "15 mins"
+
+                            // 更新界面显示
+                            tvEta.text = googleDuration
+                        }
+
+                    } else {
+                        Log.e("Directions", "No routes found")
+                    }
+                } else {
+                    Log.e("Directions", "API Error: ${response.errorBody()}")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                isRouteFetched = false
+            }
+        }
+    }
+
+    private fun decodePolyline(encoded: String): List<LatLng> {
+        val poly = ArrayList<LatLng>()
+        var index = 0
+        val len = encoded.length
+        var lat = 0
+        var lng = 0
+
+        while (index < len) {
+            var b: Int
+            var shift = 0
+            var result = 0
+            do {
+                b = encoded[index++].code - 63
+                result = result or (b and 0x1f shl shift)
+                shift += 5
+            } while (b >= 0x20)
+            val dLat = if (result and 1 != 0) (result shr 1).inv() else result shr 1
+            lat += dLat
+
+            shift = 0
+            result = 0
+            do {
+                b = encoded[index++].code - 63
+                result = result or (b and 0x1f shl shift)
+                shift += 5
+            } while (b >= 0x20)
+            val dLng = if (result and 1 != 0) (result shr 1).inv() else result shr 1
+            lng += dLng
+
+            val p = LatLng(lat.toDouble() / 1E5, lng.toDouble() / 1E5)
+            poly.add(p)
+        }
+        return poly
+    }
+
     private fun setupBottomNavigation() {
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
-
-        // 获取界面上的 View
         val mapFragmentView = findViewById<View>(R.id.mapFragment)
         val fragmentContainer = findViewById<FrameLayout>(R.id.fragment_container)
         val searchCard = findViewById<CardView>(R.id.search_card)
-        val liveTrackingCard = findViewById<CardView>(R.id.cardLiveTracking) // 获取旧的卡片，切页面时最好隐藏它
 
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
-                // 🗺️ 情况 1: 点击地图 (Home)
                 R.id.nav_home -> {
-                    // 显示地图和搜索栏
                     mapFragmentView.visibility = View.VISIBLE
-                    searchCard.visibility = View.VISIBLE
-
-                    // 隐藏 Nearby 页面
+                    searchCard?.visibility = View.VISIBLE
                     fragmentContainer.visibility = View.GONE
-
-                    // 如果有正在进行的路线，恢复显示 Live Tracking Card (可选)
-                    val routeData = ActiveRouteManager.getRoute(this)
-                    if (routeData != null) {
-                        liveTrackingCard.visibility = View.VISIBLE
-                    }
+                    checkActiveTracking()
                     true
                 }
-
-                // 🚉 情况 2: 点击 Nearby Stations (新增)
                 R.id.nav_nearby -> {
-                    // 隐藏地图、搜索栏和悬浮卡片
                     mapFragmentView.visibility = View.GONE
-                    searchCard.visibility = View.GONE
-                    liveTrackingCard.visibility = View.GONE
-
-                    // 显示 Nearby 容器
+                    searchCard?.visibility = View.GONE
+                    cardTracking.visibility = View.GONE
                     fragmentContainer.visibility = View.VISIBLE
 
-                    // 加载 NearbyFragment
-                    // 注意：为了避免重复加载，可以先判断是否已经添加
                     val existingFragment = supportFragmentManager.findFragmentByTag("NearbyFragment")
                     if (existingFragment == null) {
                         supportFragmentManager.beginTransaction()
@@ -144,56 +302,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                     }
                     true
                 }
-
-                // 📝 情况 3: 点击 Report
                 R.id.nav_report -> {
-                    val bottomSheet = ReportBottomSheetFragment()
-                    bottomSheet.show(supportFragmentManager, "ReportBottomSheet")
-                    false // 返回 false 表示不选中这个 tab，只弹窗
+                    ReportBottomSheetFragment().show(supportFragmentManager, "ReportBottomSheet")
+                    false
                 }
-
                 else -> false
             }
-        }
-    }
-
-    // --- 🔴 Live Tracking 卡片逻辑 ---
-    private fun setupLiveTrackingCard() {
-        val cardLive = findViewById<CardView>(R.id.cardLiveTracking)
-        val btnClose = findViewById<ImageButton>(R.id.btnCloseLive)
-
-        // 点击卡片 -> 跳转到 RouteDetailActivity (详情页)
-        cardLive.setOnClickListener {
-            val routeData = ActiveRouteManager.getRoute(this)
-            if (routeData != null) {
-                val intent = Intent(this, RouteDetailActivity::class.java)
-                intent.putExtra("dest_name", routeData["destName"] as String)
-                intent.putExtra("service_name", routeData["serviceName"] as String)
-                intent.putExtra("dest_lat", routeData["destLat"] as Double)
-                intent.putExtra("dest_lng", routeData["destLng"] as Double)
-                startActivity(intent)
-            }
-        }
-
-        // 点击叉叉 -> 删除路线并隐藏卡片
-        btnClose.setOnClickListener {
-            ActiveRouteManager.clearRoute(this)
-            cardLive.visibility = View.GONE
-            Toast.makeText(this, "Route cleared", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun updateLiveTrackingCard() {
-        val cardLive = findViewById<CardView>(R.id.cardLiveTracking)
-        val tvStationName = findViewById<TextView>(R.id.tvLiveStationName)
-
-        val routeData = ActiveRouteManager.getRoute(this)
-
-        if (routeData != null) {
-            cardLive.visibility = View.VISIBLE
-            tvStationName.text = routeData["destName"] as String
-        } else {
-            cardLive.visibility = View.GONE
         }
     }
 }
