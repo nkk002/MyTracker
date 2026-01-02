@@ -64,26 +64,28 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         setupBottomNavigation()
     }
 
+    // 🔥 1. 新增：当 Activity 已经在栈顶时，接收新的 Intent (从RouteDetail回来)
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent) // 更新当前 Intent
+    }
+
     private fun setupUI() {
-        // Search Bar
         val cardSearch = findViewById<CardView>(R.id.search_card)
         cardSearch?.setOnClickListener {
             startActivity(Intent(this, SearchActivity::class.java))
         }
 
-        // Tracking Card
         cardTracking = findViewById(R.id.cardLiveTracking)
         tvStationName = findViewById(R.id.tvLiveStationName)
         tvDistance = findViewById(R.id.tvLiveDistance)
         tvEta = findViewById(R.id.tvLiveEta)
         btnClose = findViewById(R.id.btnCloseLive)
 
-        // 🔥🔥🔥 补上这段缺失的代码：点击卡片跳转到详情页 🔥🔥🔥
         cardTracking.setOnClickListener {
             val route = ActiveRouteManager.getRoute(this)
             if (route != null) {
                 val intent = Intent(this, RouteDetailActivity::class.java)
-                // 确保这里的 Key 和 RouteDetailActivity 里接收的 Key 一致
                 intent.putExtra("dest_name", route["destName"] as? String)
                 intent.putExtra("service_name", route["serviceName"] as? String)
                 intent.putExtra("dest_lat", route["destLat"] as? Double ?: 0.0)
@@ -91,14 +93,24 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 startActivity(intent)
             }
         }
-        // 🔥🔥🔥 补全结束 🔥🔥🔥
 
-        // 这里的关闭按钮你之前已经有了
         btnClose.setOnClickListener { stopTracking() }
     }
 
     override fun onResume() {
         super.onResume()
+
+        // 🔥 2. 检查是否有跳转回 Home 的指令
+        if (intent.getBooleanExtra("GO_TO_HOME", false)) {
+            val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
+            // 如果当前不在 Home，切换过去
+            if (bottomNav.selectedItemId != R.id.nav_home) {
+                bottomNav.selectedItemId = R.id.nav_home
+            }
+            // 清除标记
+            intent.removeExtra("GO_TO_HOME")
+        }
+
         checkActiveTracking()
     }
 
@@ -125,7 +137,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         currentDestinationMarker = null
         currentRouteLine?.remove()
         currentRouteLine = null
-        isRouteFetched = false // 重置，下次可以重新请求
+        isRouteFetched = false
 
         Toast.makeText(this, "Navigation Stopped", Toast.LENGTH_SHORT).show()
     }
@@ -173,14 +185,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
         val destLoc = Location("destination").apply { latitude = destLat; longitude = destLng }
 
-        // 1. 只更新距离 (本地计算距离非常快且免费)
+        // 1. 只更新距离
         val distanceMeters = userLoc.distanceTo(destLoc)
         val distanceKm = distanceMeters / 1000
         tvDistance.text = String.format("%.2f km", distanceKm)
-
-        // ❌ 删除或注释掉下面这两行 (这就是导致时间不准的罪魁祸首！)
-        // val etaMins = (distanceMeters / 500).toInt()
-        // tvEta.text = if (etaMins < 1) "Arriving" else "$etaMins min"
 
         // 2. 地图操作
         if (::map.isInitialized) {
@@ -195,14 +203,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 map.animateCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, 15f))
             }
 
-            // 🔥 如果还没获取过路线，去请求 API
             if (!isRouteFetched) {
                 fetchAndDrawRoute(userLatLng, destLatLng)
             }
         }
     }
 
-    // 🔥 核心：请求 Directions API 并显示真实时间
     private fun fetchAndDrawRoute(origin: LatLng, dest: LatLng) {
         isRouteFetched = true
 
@@ -212,7 +218,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
         lifecycleScope.launch {
             try {
-                // 调用 API (确保 DirectionsApiService 里的 mode="driving" 或 "walking")
                 val response = RetrofitInstance.api.getDirections(originStr, destStr, apiKey)
 
                 if (response.isSuccessful && response.body() != null) {
@@ -220,7 +225,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                     if (routes.isNotEmpty()) {
                         val route = routes[0]
 
-                        // 1. 画线
                         val encodedString = route.overviewPolyline.points
                         val path = decodePolyline(encodedString)
 
@@ -232,12 +236,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                             .geodesic(true)
                         currentRouteLine = map.addPolyline(polylineOptions)
 
-                        // 🔥 2. 获取 Google 计算的精准时间
                         if (route.legs.isNotEmpty()) {
                             val leg = route.legs[0]
-                            val googleDuration = leg.duration.text // 例如 "15 mins"
-
-                            // 更新界面显示
+                            val googleDuration = leg.duration.text
                             tvEta.text = googleDuration
                         }
 
