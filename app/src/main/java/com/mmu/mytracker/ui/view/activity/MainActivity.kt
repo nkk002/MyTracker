@@ -78,6 +78,22 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         tvEta = findViewById(R.id.tvLiveEta)
         btnClose = findViewById(R.id.btnCloseLive)
 
+        // 🔥🔥🔥 补上这段缺失的代码：点击卡片跳转到详情页 🔥🔥🔥
+        cardTracking.setOnClickListener {
+            val route = ActiveRouteManager.getRoute(this)
+            if (route != null) {
+                val intent = Intent(this, RouteDetailActivity::class.java)
+                // 确保这里的 Key 和 RouteDetailActivity 里接收的 Key 一致
+                intent.putExtra("dest_name", route["destName"] as? String)
+                intent.putExtra("service_name", route["serviceName"] as? String)
+                intent.putExtra("dest_lat", route["destLat"] as? Double ?: 0.0)
+                intent.putExtra("dest_lng", route["destLng"] as? Double ?: 0.0)
+                startActivity(intent)
+            }
+        }
+        // 🔥🔥🔥 补全结束 🔥🔥🔥
+
+        // 这里的关闭按钮你之前已经有了
         btnClose.setOnClickListener { stopTracking() }
     }
 
