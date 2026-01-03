@@ -64,10 +64,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         setupBottomNavigation()
     }
 
-    // 🔥 1. 新增：当 Activity 已经在栈顶时，接收新的 Intent (从RouteDetail回来)
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent) // 更新当前 Intent
+        setIntent(intent)
     }
 
     private fun setupUI() {
@@ -100,14 +99,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onResume() {
         super.onResume()
 
-        // 🔥 2. 检查是否有跳转回 Home 的指令
         if (intent.getBooleanExtra("GO_TO_HOME", false)) {
             val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
-            // 如果当前不在 Home，切换过去
             if (bottomNav.selectedItemId != R.id.nav_home) {
                 bottomNav.selectedItemId = R.id.nav_home
             }
-            // 清除标记
             intent.removeExtra("GO_TO_HOME")
         }
 
@@ -146,8 +142,35 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         map = googleMap
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             map.isMyLocationEnabled = true
+
+            // 🔥 新增：如果没有导航，初始化时直接飞到用户位置
+            if (ActiveRouteManager.getRoute(this) == null) {
+                getDeviceLocation()
+            }
         }
         checkActiveTracking()
+    }
+
+    // 🔥 新增：获取设备位置并移动相机
+    private fun getDeviceLocation() {
+        try {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                val locationResult = fusedLocationClient.lastLocation
+                locationResult.addOnCompleteListener(this) { task ->
+                    if (task.isSuccessful) {
+                        val lastKnownLocation = task.result
+                        if (lastKnownLocation != null) {
+                            map.moveCamera(CameraUpdateFactory.newLatLngZoom(
+                                LatLng(lastKnownLocation.latitude, lastKnownLocation.longitude),
+                                15f
+                            ))
+                        }
+                    }
+                }
+            }
+        } catch (e: SecurityException) {
+            e.printStackTrace()
+        }
     }
 
     private fun startLocationUpdates() {
@@ -185,12 +208,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
         val destLoc = Location("destination").apply { latitude = destLat; longitude = destLng }
 
-        // 1. 只更新距离
         val distanceMeters = userLoc.distanceTo(destLoc)
         val distanceKm = distanceMeters / 1000
         tvDistance.text = String.format("%.2f km", distanceKm)
 
-        // 2. 地图操作
         if (::map.isInitialized) {
             val userLatLng = LatLng(userLoc.latitude, userLoc.longitude)
             val destLatLng = LatLng(destLat, destLng)
