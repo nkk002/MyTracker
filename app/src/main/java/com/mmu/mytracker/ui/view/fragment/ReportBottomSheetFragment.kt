@@ -9,7 +9,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.mmu.mytracker.R
 import com.mmu.mytracker.data.remote.repository.TransportRepository
-import com.mmu.mytracker.data.remote.repository.StationRepository //
+import com.mmu.mytracker.data.remote.repository.StationRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -17,48 +17,46 @@ import kotlinx.coroutines.withContext
 class ReportBottomSheetFragment : BottomSheetDialogFragment() {
 
     private val transportRepository = TransportRepository()
-    private val stationRepository = StationRepository() // 1. 新增 StationRepository
+    private val stationRepository = StationRepository()
 
     private lateinit var spinnerLine: Spinner
-    private lateinit var spinnerStation: Spinner // 2. 绑定新的 Spinner
+    private lateinit var spinnerStation: Spinner
     private lateinit var radioGroup: RadioGroup
     private lateinit var etComment: EditText
     private lateinit var btnSubmit: Button
     private lateinit var etDelayTime: EditText
 
-    // 预设路线列表
-    private val lines = listOf("Select Line","MRT Kajang Line", "MRT Putrajaya Line")
+    // 定义线路选项
+    private val lines = listOf("Select Line", "MRT Kajang Line", "MRT Putrajaya Line")
 
-    // 缓存所有车站数据，避免每次选择都去下载
+    // 缓存所有车站数据
     private var allStationsCache: List<com.mmu.mytracker.data.model.Station> = emptyList()
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        return inflater.inflate(R.layout.fragment_report_bottom_sheet, container, false) //
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
+        return inflater.inflate(R.layout.fragment_report_bottom_sheet, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // 1. 绑定 Views
         spinnerLine = view.findViewById(R.id.spinnerLine)
-        spinnerStation = view.findViewById(R.id.spinnerStation) // 绑定 XML 里的 ID
+        spinnerStation = view.findViewById(R.id.spinnerStation)
         radioGroup = view.findViewById(R.id.radioGroupCrowd)
-        etDelayTime = view.findViewById(R.id.etDelayTime)
-        etComment = view.findViewById(R.id.etComments) // 注意 XML 里是 etComments
+        etComment = view.findViewById(R.id.etComments)
         btnSubmit = view.findViewById(R.id.btnSubmitReport)
+        etDelayTime = view.findViewById(R.id.etDelayTime)
 
+        // 2. 初始化 Line Spinner
         setupLineSpinner()
 
-        // 3. 在后台预加载所有车站数据
-        lifecycleScope.launch {
-            try {
-                allStationsCache = withContext(Dispatchers.IO) {
-                    stationRepository.getAllStations()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        // 3. 预加载车站数据 (这样用户点选时不用等)
+        fetchAllStations()
 
+        // 4. 提交按钮点击事件
         btnSubmit.setOnClickListener {
             submitReport()
         }
@@ -69,48 +67,93 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinnerLine.adapter = adapter
 
-        // 4. 监听 Line 选择，联动更新 Station
+        // 监听 Line 选择事件
         spinnerLine.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selectedLine = lines[position]
-                updateStationSpinner(selectedLine)
+
+                // 如果选了具体线路，就去过滤车站
+                if (selectedLine != "Select Line") {
+                    filterStationsByLine(selectedLine)
+                } else {
+                    // 如果选回了默认，清空或重置车站列表
+                    resetStationSpinner()
+                }
             }
+
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
     }
 
-    // 5. 根据选中的 Line 筛选车站
-    private fun updateStationSpinner(lineName: String) {
-        val stationList = mutableListOf<String>()
+    // 🔥 核心逻辑：根据选中的 Line 过滤 Station
+    private fun filterStationsByLine(selectedLine: String) {
+        if (allStationsCache.isEmpty()) return
 
-        if (lineName == "Select Line") {
-            stationList.add("Select Line First")
-        } else {
-            // 默认选项：整条线通用
-            stationList.add("General (Whole Line)")
-
-            // 筛选逻辑：找到包含该 Service 的车站
-            val filtered = allStationsCache.filter { station ->
-                station.services.any { service ->
-                    // 模糊匹配：比如 "MRT Kajang Line" 包含 "MRT" 或者名字相符
-                    lineName.contains(service.type, ignoreCase = true) ||
-                            lineName.contains(service.name, ignoreCase = true) ||
-                            service.name.contains(lineName, ignoreCase = true)
-                }
-            }.map { it.name }.sorted()
-
-            stationList.addAll(filtered)
+        // 1. 确定过滤关键字 (简化匹配逻辑)
+        val keyword = when (selectedLine) {
+            "MRT Kajang Line" -> "Kajang"     // 只要服务名包含 Kajang
+            "MRT Putrajaya Line" -> "Putrajaya" // 只要服务名包含 Putrajaya
+            else -> ""
         }
 
-        val stationAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, stationList)
-        stationAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinnerStation.adapter = stationAdapter
+        if (keyword.isEmpty()) return
+
+        // 2. 筛选车站
+        val filteredNames = allStationsCache.filter { station ->
+            // 检查该车站的 services 列表里，有没有名字包含关键字的
+            station.services.any { service ->
+                service.name.contains(keyword, ignoreCase = true) ||
+                        service.type.contains(keyword, ignoreCase = true)
+            }
+        }.map { it.name }.sorted() // 提取名字并排序
+
+        // 3. 添加一个默认选项 "General (Whole Line)"
+        val finalStationList = mutableListOf("General (Whole Line)")
+        finalStationList.addAll(filteredNames)
+
+        // 4. 更新 Station Spinner
+        updateStationSpinner(finalStationList)
+    }
+
+    private fun resetStationSpinner() {
+        val defaultList = listOf("Select Line First")
+        updateStationSpinner(defaultList)
+    }
+
+    private fun updateStationSpinner(data: List<String>) {
+        // 确保 Fragment 还在才更新 UI
+        if (!isAdded) return
+
+        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, data)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerStation.adapter = adapter
+    }
+
+    private fun fetchAllStations() {
+        lifecycleScope.launch {
+            try {
+                // 在后台线程加载数据
+                val stations = withContext(Dispatchers.IO) {
+                    stationRepository.getAllStations()
+                }
+                allStationsCache = stations
+
+                // 数据加载完后，如果用户已经选了线路，立即刷新一次
+                val currentLine = spinnerLine.selectedItem.toString()
+                if (currentLine != "Select Line") {
+                    filterStationsByLine(currentLine)
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // 如果失败，可以给 allStationsCache 一个空列表防止崩溃
+            }
+        }
     }
 
     private fun submitReport() {
         val line = spinnerLine.selectedItem.toString()
-        // 获取选中的车站，如果为空则默认为 General
-        val station = spinnerStation.selectedItem?.toString() ?: "General (Whole Line)"
+        val station = spinnerStation.selectedItem?.toString() ?: "General"
 
         if (line == "Select Line") {
             Toast.makeText(context, "Please select a transport line", Toast.LENGTH_SHORT).show()
@@ -125,17 +168,15 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
         }
 
         val delay = etDelayTime.text.toString().ifEmpty { "0" }
-
         val comment = etComment.text.toString()
 
         lifecycleScope.launch {
-            // 6. 调用 Repository 提交，多传一个 station 参数
             val success = transportRepository.submitReport(line, station, crowdLevel, delay, comment)
             if (success) {
                 Toast.makeText(context, "Report submitted!", Toast.LENGTH_SHORT).show()
                 dismiss()
             } else {
-                Toast.makeText(context, "Failed to submit", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Failed to submit report", Toast.LENGTH_SHORT).show()
             }
         }
     }
