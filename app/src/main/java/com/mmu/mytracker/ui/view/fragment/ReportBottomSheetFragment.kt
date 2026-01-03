@@ -27,7 +27,7 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
     private lateinit var etDelayTime: EditText
 
     // 定义线路选项
-    private val lines = listOf("Select Line", "MRT Kajang Line", "MRT Putrajaya Line")
+    private val lines = listOf("Select Line", "MRT Kajang Line", "MRT Putrajaya Line","Bus T460")
 
     // 缓存所有车站数据
     private var allStationsCache: List<com.mmu.mytracker.data.model.Station> = emptyList()
@@ -93,6 +93,7 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
         val keyword = when (selectedLine) {
             "MRT Kajang Line" -> "Kajang"     // 只要服务名包含 Kajang
             "MRT Putrajaya Line" -> "Putrajaya" // 只要服务名包含 Putrajaya
+            "Bus T460" -> "T460"
             else -> ""
         }
 
