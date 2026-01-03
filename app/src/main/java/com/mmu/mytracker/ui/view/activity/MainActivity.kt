@@ -48,8 +48,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private var currentDestinationMarker: Marker? = null
     private var currentRouteLine: Polyline? = null
 
-    // 🔥 防止重复请求 API 的标记
+    // 🔥 状态控制
     private var isRouteFetched = false
+    // 🔥 新增：记录上一次的目标车站，用于检测任务是否变更
+    private var lastStationName: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,17 +112,36 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         checkActiveTracking()
     }
 
+    // 🔥 修改：检查任务时，如果车站变了，就重置状态
     private fun checkActiveTracking() {
         val route = ActiveRouteManager.getRoute(this)
 
         if (route != null) {
-            val name = route["destName"] as? String ?: "Unknown Station"
+            val currentStationName = route["destName"] as? String ?: "Unknown Station"
+
+            // 如果发现这次的车站名字和上次不一样，说明换了目的地
+            if (currentStationName != lastStationName) {
+                // 1. 重置 API 请求标记，让 updateTrackingLogic 重新画线
+                isRouteFetched = false
+                lastStationName = currentStationName
+
+                // 2. 清除旧地图元素
+                currentRouteLine?.remove()
+                currentRouteLine = null
+                currentDestinationMarker?.remove()
+                currentDestinationMarker = null
+
+                // 3. 重置时间显示
+                tvEta.text = "-- min"
+            }
+
             cardTracking.visibility = View.VISIBLE
-            tvStationName.text = name
+            tvStationName.text = currentStationName
             startLocationUpdates()
         } else {
             cardTracking.visibility = View.GONE
             stopLocationUpdates()
+            lastStationName = null // 清空记录
         }
     }
 
@@ -133,7 +154,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         currentDestinationMarker = null
         currentRouteLine?.remove()
         currentRouteLine = null
+
+        // 重置状态
         isRouteFetched = false
+        lastStationName = null
 
         Toast.makeText(this, "Navigation Stopped", Toast.LENGTH_SHORT).show()
     }
@@ -143,7 +167,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             map.isMyLocationEnabled = true
 
-            // 🔥 新增：如果没有导航，初始化时直接飞到用户位置
             if (ActiveRouteManager.getRoute(this) == null) {
                 getDeviceLocation()
             }
@@ -151,7 +174,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         checkActiveTracking()
     }
 
-    // 🔥 新增：获取设备位置并移动相机
     private fun getDeviceLocation() {
         try {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -224,6 +246,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 map.animateCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, 15f))
             }
 
+            // 🔥 只有当路线没画过（或者被重置过）才请求 API
             if (!isRouteFetched) {
                 fetchAndDrawRoute(userLatLng, destLatLng)
             }
