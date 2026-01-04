@@ -2,8 +2,6 @@ package com.mmu.mytracker.ui.view.activity
 
 import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.widget.ImageButton
 import android.widget.TextView
@@ -50,16 +48,22 @@ class RouteDetailActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.tvHeaderTitle).text = destName
         findViewById<TextView>(R.id.tvServiceName).text = serviceName
 
+        // 🔥 新增：动态修改标题 (Next Train -> Next Bus)
+        val tvNextTrainLabel = findViewById<TextView>(R.id.tvNextTrainLabel)
+        // 检查服务名字里有没有 "Bus" (忽略大小写)
+        if (serviceName.contains("Bus", ignoreCase = true)) {
+            tvNextTrainLabel.text = "Next Bus"
+        } else {
+            tvNextTrainLabel.text = "Next Train"
+        }
+
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
 
         findViewById<CardView>(R.id.btnStartRoute).setOnClickListener {
             ActiveRouteManager.saveRoute(this, destName, serviceName, destLat, destLng)
             val intent = Intent(this, MainActivity::class.java)
             intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-
-            // 🔥 新增：告诉 MainActivity 必须切回 Home Tab
             intent.putExtra("GO_TO_HOME", true)
-
             startActivity(intent)
             finish()
         }
@@ -97,10 +101,11 @@ class RouteDetailActivity : AppCompatActivity() {
                 val station = allStations.find { it.name == stationName }
 
                 if (station != null) {
+                    // 模糊匹配服务名 (例如 "Bus T460" 匹配 "Bus")
                     val service = station.services.find {
-                        it.name.equals(serviceName, ignoreCase = true) ||
-                                it.type.equals(serviceName, ignoreCase = true) ||
-                                serviceName.contains(it.type, ignoreCase = true)
+                        it.name.contains(serviceName, ignoreCase = true) ||
+                                serviceName.contains(it.name, ignoreCase = true) ||
+                                it.type.equals(serviceName, ignoreCase = true)
                     }
 
                     if (service != null) {
@@ -134,7 +139,7 @@ class RouteDetailActivity : AppCompatActivity() {
                         }
 
                     } else {
-                        tvTrain1Count.text = "--"
+                        tvTrain1Count.text = "--" // 没找到该服务
                     }
                 }
             } catch (e: Exception) {
@@ -146,6 +151,7 @@ class RouteDetailActivity : AppCompatActivity() {
 
     private fun startListeningForAlerts(userSelectedLine: String, currentStationName: String) {
         lifecycleScope.launch {
+            // 注意：如果是 Bus，这里可能需要传入具体的 Service Name 作为 Line
             transportRepository.observeRealTimeReports(userSelectedLine).collect { allReports ->
                 val relevantReports = allReports.filter { report ->
                     val station = report["station"] as? String ?: "General"

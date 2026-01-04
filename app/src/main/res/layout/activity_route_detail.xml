@@ -81,10 +81,11 @@
                         android:layout_weight="1"
                         android:orientation="vertical">
                         <TextView
+                            android:id="@+id/tvNextTrainLabel"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="🕒 Next Train"
-                            android:textSize="12sp"
+                            android:textSize="14sp"
                             android:textColor="#1565C0"/>
                         <TextView
                             android:id="@+id/tvTrain1Countdown"
@@ -105,7 +106,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="🕒 Arrival"
-                            android:textSize="12sp"
+                            android:textSize="14sp"
                             android:textColor="#1565C0"/>
                         <TextView
                             android:id="@+id/tvTrain1Arrival"
