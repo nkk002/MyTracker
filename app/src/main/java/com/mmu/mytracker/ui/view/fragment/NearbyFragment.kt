@@ -41,7 +41,7 @@ class NearbyFragment : Fragment() {
 
     private var selectedType = "MRT"
 
-    // 🔥 1. 新增：缓存变量 (用来存下载好的车站，防止重复下载)
+    // 缓存变量 (用来存下载好的车站，防止重复下载)
     private var cachedAllStations: List<Station>? = null
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -82,11 +82,11 @@ class NearbyFragment : Fragment() {
             requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
-        // 🔥 2. 启动自动刷新循环 (每 30 秒刷新一次)
+        // 启动自动刷新循环 (每 30 秒刷新一次)
         startAutoRefreshLoop()
     }
 
-    // 🔥 3. 自动刷新逻辑
+    // 自动刷新逻辑
     private fun startAutoRefreshLoop() {
         lifecycleScope.launch {
             while (isActive) { // 只要页面还在，就一直跑
@@ -141,7 +141,7 @@ class NearbyFragment : Fragment() {
     private fun calculateNearbyStations(userLocation: Location) {
         lifecycleScope.launch {
             try {
-                // 🔥 4. 智能获取数据：如果有缓存，直接用缓存；没有才去下载
+                // 智能获取数据：如果有缓存，直接用缓存；没有才去下载
                 val allStations = if (cachedAllStations != null) {
                     cachedAllStations!! // 使用缓存
                 } else {
@@ -153,7 +153,7 @@ class NearbyFragment : Fragment() {
                     fetched
                 }
 
-                // 下面的逻辑保持不变 (筛选 + 计算时间)
+                // 筛选 + 计算时间
                 val filteredList = allStations.filter { station ->
                     station.services.any { it.type.equals(selectedType, ignoreCase = true) }
                 }
@@ -169,8 +169,12 @@ class NearbyFragment : Fragment() {
                         val infoText = if (matchingService != null) {
                             val distKm = "%.2f km".format(distance / 1000)
 
-                            // 使用 TimeUtils 重新计算 (因为 TimeUtils 每次都会拿当前 LocalTime.now())
-                            val mins = TimeUtils.getMinutesUntilNextTrain(matchingService.first_train, matchingService.frequency_min)
+                            // 🔥 核心修改：这里加入了 offset_min，确保和 RouteDetailActivity 的时间一致
+                            val mins = TimeUtils.getMinutesUntilNextTrain(
+                                matchingService.first_train,
+                                matchingService.frequency_min,
+                                matchingService.offset_min // <--- 之前漏了这行！
+                            )
                             val timeString = TimeUtils.formatTimeDisplay(mins)
 
                             "$distKm away • Next ${matchingService.type}: $timeString"
@@ -181,7 +185,7 @@ class NearbyFragment : Fragment() {
                         Triple(station, distance, infoText)
                     }
                     .sortedBy { it.second }
-                    .take(2)
+                    .take(2) // 只显示最近的 2 个
 
                 val finalData = filteredList.map { Pair(it.first, it.third) }
                 adapter.updateData(finalData)
@@ -189,7 +193,7 @@ class NearbyFragment : Fragment() {
             } catch (e: Exception) {
                 // 出错时不弹 Toast 干扰自动刷新
                 if (progressBar.visibility == View.VISIBLE) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    // Log.e("Nearby", "Error", e)
                 }
             } finally {
                 progressBar.visibility = View.GONE

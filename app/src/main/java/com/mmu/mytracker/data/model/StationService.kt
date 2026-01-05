@@ -1,6 +1,8 @@
 package com.mmu.mytracker.data.model
 
 import android.os.Parcelable
+import com.google.firebase.database.PropertyName
+import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 
 @Parcelize
@@ -9,8 +11,41 @@ data class StationService(
     val name: String = "",
     val type: String = "",
     val direction: String = "",
-    // 🔥 新增这三个字段 (要和 Firestore 里的字段名完全一致)
-    val frequency_min: Int = 0,
-    val first_train: String = "",  // Format: "06:00"
-    val last_train: String = ""
-) : Parcelable
+    val first_train: String = "",
+    val last_train: String = "",
+
+    // 🔥 核心修改：使用私有变量 + 显式 Getter/Setter
+    // 这样 Firebase 绝对能找到这两个字段
+    @PropertyName("frequency_min")
+    var _frequency_min: String? = "0",
+
+    @PropertyName("offset_min")
+    var _offset_min: String? = "0"
+
+) : Parcelable {
+
+    // 1. 获取频率 (Int)
+    // 使用 @IgnoredOnParcel 防止 Parcelize 报错
+    @IgnoredOnParcel
+    var frequency_min: Int
+        get() = try {
+            _frequency_min?.toString()?.toInt() ?: 0
+        } catch (e: Exception) {
+            0
+        }
+        set(value) {
+            _frequency_min = value.toString()
+        }
+
+    // 2. 获取偏移量 (Int)
+    @IgnoredOnParcel
+    var offset_min: Int
+        get() = try {
+            _offset_min?.toString()?.toInt() ?: 0
+        } catch (e: Exception) {
+            0
+        }
+        set(value) {
+            _offset_min = value.toString()
+        }
+}

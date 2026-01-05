@@ -109,7 +109,12 @@ class RouteDetailActivity : AppCompatActivity() {
                     }
 
                     if (service != null) {
-                        val nextTrains = TimeUtils.getNextThreeTrains(service.first_train, service.frequency_min)
+                        android.util.Log.d("DEBUG_TIME", "Station: $stationName, Freq: ${service.frequency_min}, Offset: ${service.offset_min}")
+                        val nextTrains = TimeUtils.getNextThreeTrains(
+                            service.first_train,
+                            service.frequency_min,
+                            service.offset_min
+                        )
                         val malaysiaZone = ZoneId.of("Asia/Kuala_Lumpur")
                         val now = LocalTime.now(malaysiaZone)
                         val formatter = DateTimeFormatter.ofPattern("hh:mm a")
