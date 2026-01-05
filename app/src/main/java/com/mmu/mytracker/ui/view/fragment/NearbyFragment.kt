@@ -177,7 +177,7 @@ class NearbyFragment : Fragment() {
                             )
                             val timeString = TimeUtils.formatTimeDisplay(mins)
 
-                            "$distKm away • Next ${matchingService.type}: $timeString"
+                            "$distKm away • Next ${matchingService.type} : $timeString"
                         } else {
                             "Service available"
                         }
@@ -185,7 +185,7 @@ class NearbyFragment : Fragment() {
                         Triple(station, distance, infoText)
                     }
                     .sortedBy { it.second }
-                    .take(2) // 只显示最近的 2 个
+                    .take(3)
 
                 val finalData = filteredList.map { Pair(it.first, it.third) }
                 adapter.updateData(finalData)
