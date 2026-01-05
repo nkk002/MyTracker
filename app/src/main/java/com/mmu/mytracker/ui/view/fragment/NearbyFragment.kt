@@ -173,7 +173,7 @@ class NearbyFragment : Fragment() {
                             val mins = TimeUtils.getMinutesUntilNextTrain(
                                 matchingService.first_train,
                                 matchingService.frequency_min,
-                                matchingService.offset_min // <--- 之前漏了这行！
+                                matchingService.offset_min
                             )
                             val timeString = TimeUtils.formatTimeDisplay(mins)
 
