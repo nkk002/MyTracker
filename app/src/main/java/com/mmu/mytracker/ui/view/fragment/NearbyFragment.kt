@@ -185,7 +185,7 @@ class NearbyFragment : Fragment() {
                         Triple(station, distance, infoText)
                     }
                     .sortedBy { it.second }
-                    .take(3)
+                    .take(4)
 
                 val finalData = filteredList.map { Pair(it.first, it.third) }
                 adapter.updateData(finalData)

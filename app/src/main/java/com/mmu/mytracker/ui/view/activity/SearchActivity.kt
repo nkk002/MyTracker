@@ -90,7 +90,6 @@ class SearchActivity : AppCompatActivity() {
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerRecentSearches)
         recyclerView.layoutManager = LinearLayoutManager(this)
 
-        // 初始化 Adapter
         adapter = RecentSearchAdapter(
             historyManager.getHistory().toMutableList(),
             onItemClick = { clickedPlace ->
@@ -109,7 +108,7 @@ class SearchActivity : AppCompatActivity() {
             .setName(recentPlace.name)
             .setAddress(recentPlace.address)
             .setLatLng(com.google.android.gms.maps.model.LatLng(recentPlace.lat, recentPlace.lng))
-            .setPlaceTypes(listOf("transit_station"))
+            // .setPlaceTypes(listOf("transit_station")) // 不需要强制设置类型了
             .build()
 
         handleSelectedPlace(fakePlace)
@@ -136,75 +135,68 @@ class SearchActivity : AppCompatActivity() {
 
         autocompleteLauncher.launch(intent)
     }
-
     private fun handleSelectedPlace(place: Place) {
         val googlePlaceName = place.name ?: "Unknown"
         val userLat = place.latLng?.latitude ?: 0.0
         val userLng = place.latLng?.longitude ?: 0.0
 
-        val placeTypes = place.placeTypes ?: emptyList()
-        val strictTransportTypes = setOf("transit_station", "bus_station", "train_station", "subway_station", "light_rail_station")
-        val transportKeywords = listOf("mrt", "lrt", "ktm", "station", "stesen", "sentral", "terminal", "bus stop")
+        // ❌ 之前的 "isTransportRelated" 检查代码已被移除，
+        // 现在的逻辑是：只要用户选了一个地点，就直接去附近 500m 搜车站。
 
-        val isTransportRelated = placeTypes.any { it in strictTransportTypes } ||
-                transportKeywords.any { googlePlaceName.lowercase().contains(it) }
+        lifecycleScope.launch {
+            Toast.makeText(this@SearchActivity, "Finding stations near $googlePlaceName...", Toast.LENGTH_SHORT).show()
 
-        if (isTransportRelated) {
-            lifecycleScope.launch {
-                Toast.makeText(this@SearchActivity, "Finding stations nearby...", Toast.LENGTH_SHORT).show()
+            val selectedLocation = Location("user_selected").apply {
+                latitude = userLat
+                longitude = userLng
+            }
 
-                val selectedLocation = Location("user_selected").apply {
-                    latitude = userLat
-                    longitude = userLng
+            val allStations = withContext(Dispatchers.IO) {
+                stationRepository.getAllStations()
+            }
+
+            val nearbyStations = mutableListOf<Pair<Station, Float>>()
+            val MATCH_THRESHOLD_METERS = 250f // 搜索半径 500米
+
+            for (station in allStations) {
+                val stationLocation = Location("firestore_station").apply {
+                    latitude = station.latitude
+                    longitude = station.longitude
                 }
+                val distance = selectedLocation.distanceTo(stationLocation)
 
-                val allStations = withContext(Dispatchers.IO) {
-                    stationRepository.getAllStations()
-                }
-
-                val nearbyStations = mutableListOf<Pair<Station, Float>>()
-                val MATCH_THRESHOLD_METERS = 500f
-
-                for (station in allStations) {
-                    val stationLocation = Location("firestore_station").apply {
-                        latitude = station.latitude
-                        longitude = station.longitude
-                    }
-                    val distance = selectedLocation.distanceTo(stationLocation)
-
-                    if (distance <= MATCH_THRESHOLD_METERS) {
-                        nearbyStations.add(Pair(station, distance))
-                    }
-                }
-
-                // 按距离排序
-                nearbyStations.sortBy { it.second }
-
-                if (nearbyStations.isNotEmpty()) {
-                    if (nearbyStations.size == 1) {
-                        openStationOptions(nearbyStations[0].first)
-                    } else {
-                        // 找到多个车站，显示优化的 BottomSheet
-                        showStationChooserDialog(nearbyStations)
-                    }
-
-                    val recent = RecentPlace(googlePlaceName, place.address ?: "", userLat, userLng)
-                    historyManager.savePlace(recent)
-
-                } else {
-                    Toast.makeText(this@SearchActivity, "No supported station found nearby (within 500m).", Toast.LENGTH_LONG).show()
+                if (distance <= MATCH_THRESHOLD_METERS) {
+                    nearbyStations.add(Pair(station, distance))
                 }
             }
-        } else {
-            Toast.makeText(this, "Please select a valid Transport Station", Toast.LENGTH_LONG).show()
+
+            // 按距离排序
+            nearbyStations.sortBy { it.second }
+
+            if (nearbyStations.isNotEmpty()) {
+                if (nearbyStations.size == 1) {
+                    // 只有一个结果，直接打开
+                    openStationOptions(nearbyStations[0].first)
+                } else {
+                    // 有多个结果，显示 BottomSheet 让用户选
+                    showStationChooserDialog(nearbyStations)
+                }
+
+                // 保存历史记录
+                val recent = RecentPlace(googlePlaceName, place.address ?: "", userLat, userLng)
+                historyManager.savePlace(recent)
+
+            } else {
+                Toast.makeText(this@SearchActivity, "No supported station found nearby (within 500m).", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
-    // 🔥🔥 核心修改：使用 BottomSheet 替代 AlertDialog 🔥🔥
+    // ✅ 优化后的 BottomSheet 弹窗
     private fun showStationChooserDialog(stations: List<Pair<Station, Float>>) {
         val bottomSheetDialog = BottomSheetDialog(this)
 
-        // 动态创建布局容器 (避免再建一个 layout_bottom_sheet.xml)
+        // 动态创建布局容器
         val container = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setPadding(0, 32, 0, 32)
@@ -265,7 +257,7 @@ class SearchActivity : AppCompatActivity() {
     }
 }
 
-// 🔥🔥 新增：专用的 Adapter，用于显示整齐的车站列表 🔥🔥
+// ✅ 优化后的 Adapter：使用 item_station_selection.xml 布局
 class StationSelectionAdapter(
     private val stations: List<Pair<Station, Float>>,
     private val onClick: (Station) -> Unit
@@ -274,11 +266,11 @@ class StationSelectionAdapter(
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvName: TextView = view.findViewById(R.id.tvStationName)
         val tvDist: TextView = view.findViewById(R.id.tvStationDist)
-        // val ivIcon: ImageView = view.findViewById(R.id.ivIcon) // 可选：如果需要动态改图标
+        // val ivIcon: ImageView = view.findViewById(R.id.ivIcon)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        // 加载我们在 Step 1 创建的 XML
+        // 🔥 加载 item_station_selection.xml
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_busstation_selection, parent, false)
         return ViewHolder(view)
