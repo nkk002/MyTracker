@@ -4,6 +4,9 @@ import android.app.Activity
 import android.content.Intent
 import android.location.Location
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
@@ -17,13 +20,13 @@ import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.widget.Autocomplete
 import com.google.android.libraries.places.widget.AutocompleteActivity
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.mmu.mytracker.R
 import com.mmu.mytracker.data.model.RecentPlace
 import com.mmu.mytracker.data.model.Station
 import com.mmu.mytracker.data.remote.repository.StationRepository
 import com.mmu.mytracker.ui.adapter.RecentSearchAdapter
 import com.mmu.mytracker.ui.view.fragment.ServiceSelectionBottomSheet
-import com.mmu.mytracker.utils.ActiveRouteManager
 import com.mmu.mytracker.utils.SearchHistoryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -91,12 +94,10 @@ class SearchActivity : AppCompatActivity() {
         adapter = RecentSearchAdapter(
             historyManager.getHistory().toMutableList(),
             onItemClick = { clickedPlace ->
-                // 🔥 1. 点击历史记录 -> 触发像 Google Search 一样的逻辑
                 handleHistoryClick(clickedPlace)
             },
             onDeleteClick = { placeToDelete ->
-                // 🔥 2. 点击删除 -> 从 SharedPrefs 移除
-                historyManager.removePlace(placeToDelete) // 记得在 Manager 里加这个方法
+                historyManager.removePlace(placeToDelete)
                 adapter.updateData(historyManager.getHistory())
             }
         )
@@ -108,7 +109,7 @@ class SearchActivity : AppCompatActivity() {
             .setName(recentPlace.name)
             .setAddress(recentPlace.address)
             .setLatLng(com.google.android.gms.maps.model.LatLng(recentPlace.lat, recentPlace.lng))
-            .setPlaceTypes(listOf("transit_station")) // 假装它是车站，触发后续逻辑
+            .setPlaceTypes(listOf("transit_station"))
             .build()
 
         handleSelectedPlace(fakePlace)
@@ -150,22 +151,18 @@ class SearchActivity : AppCompatActivity() {
 
         if (isTransportRelated) {
             lifecycleScope.launch {
-                Toast.makeText(this@SearchActivity, "Finding nearest station...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@SearchActivity, "Finding stations nearby...", Toast.LENGTH_SHORT).show()
 
-                // Step A: 准备用户选中的位置
                 val selectedLocation = Location("user_selected").apply {
                     latitude = userLat
                     longitude = userLng
                 }
 
-                // Step B: 获取 Firestore 所有车站
                 val allStations = withContext(Dispatchers.IO) {
                     stationRepository.getAllStations()
                 }
 
-                // Step C: 寻找最近的车站 (500米范围内)
-                var nearestStation: Station? = null
-                var minDistance = Float.MAX_VALUE
+                val nearbyStations = mutableListOf<Pair<Station, Float>>()
                 val MATCH_THRESHOLD_METERS = 500f
 
                 for (station in allStations) {
@@ -173,50 +170,29 @@ class SearchActivity : AppCompatActivity() {
                         latitude = station.latitude
                         longitude = station.longitude
                     }
-
                     val distance = selectedLocation.distanceTo(stationLocation)
 
-                    if (distance <= MATCH_THRESHOLD_METERS && distance < minDistance) {
-                        minDistance = distance
-                        nearestStation = station
+                    if (distance <= MATCH_THRESHOLD_METERS) {
+                        nearbyStations.add(Pair(station, distance))
                     }
                 }
 
-                // Step D: 处理结果
-                if (nearestStation != null) {
-                    val officialName = nearestStation.name
-                    val services = nearestStation.services
+                // 按距离排序
+                nearbyStations.sortBy { it.second }
 
-                    if (services.isNotEmpty()) {
-                        val bottomSheet = ServiceSelectionBottomSheet(officialName, services) { selectedService ->
-
-                            // ❌ [DELETE] 这一段被删除了！不要在这里保存路线！
-                            // ActiveRouteManager.saveRoute(...)
-
-                            // ✅ [KEEP] 只保留跳转逻辑，把数据传给 RouteDetailActivity
-                            val intent = Intent(this@SearchActivity, RouteDetailActivity::class.java)
-                            intent.putExtra("dest_name", officialName)
-                            intent.putExtra("dest_lat", nearestStation.latitude)
-                            intent.putExtra("dest_lng", nearestStation.longitude)
-                            intent.putExtra("service_name", selectedService.name)
-                            startActivity(intent)
-
-                            // 保存搜索历史 (View Only)
-                            val recent = RecentPlace(googlePlaceName, place.address ?: "", userLat, userLng)
-                            historyManager.savePlace(recent)
-                        }
-                        bottomSheet.show(supportFragmentManager, "ServiceSelection")
+                if (nearbyStations.isNotEmpty()) {
+                    if (nearbyStations.size == 1) {
+                        openStationOptions(nearbyStations[0].first)
                     } else {
-                        Toast.makeText(this@SearchActivity, "Station found but no services configured.", Toast.LENGTH_SHORT).show()
+                        // 找到多个车站，显示优化的 BottomSheet
+                        showStationChooserDialog(nearbyStations)
                     }
-
-                } else {
-                    // 没找到匹配的车站
-                    Toast.makeText(this@SearchActivity, "No supported station found nearby (within 500m).", Toast.LENGTH_LONG).show()
 
                     val recent = RecentPlace(googlePlaceName, place.address ?: "", userLat, userLng)
                     historyManager.savePlace(recent)
-                    returnResult(recent.name, recent.lat, recent.lng)
+
+                } else {
+                    Toast.makeText(this@SearchActivity, "No supported station found nearby (within 500m).", Toast.LENGTH_LONG).show()
                 }
             }
         } else {
@@ -224,12 +200,101 @@ class SearchActivity : AppCompatActivity() {
         }
     }
 
-    private fun returnResult(name: String, lat: Double, lng: Double) {
-        val intent = Intent()
-        intent.putExtra("selected_name", name)
-        intent.putExtra("selected_lat", lat)
-        intent.putExtra("selected_lng", lng)
-        setResult(Activity.RESULT_OK, intent)
-        finish()
+    // 🔥🔥 核心修改：使用 BottomSheet 替代 AlertDialog 🔥🔥
+    private fun showStationChooserDialog(stations: List<Pair<Station, Float>>) {
+        val bottomSheetDialog = BottomSheetDialog(this)
+
+        // 动态创建布局容器 (避免再建一个 layout_bottom_sheet.xml)
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(0, 32, 0, 32)
+            background = androidx.core.content.ContextCompat.getDrawable(context, android.R.color.white)
+        }
+
+        // 1. 标题
+        val titleView = TextView(this).apply {
+            text = "Select Station"
+            textSize = 20f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(android.graphics.Color.BLACK)
+            setPadding(48, 0, 48, 16)
+        }
+        container.addView(titleView)
+
+        // 2. 副标题
+        val subtitleView = TextView(this).apply {
+            text = "Multiple stations found nearby. Please choose the correct one:"
+            textSize = 14f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(48, 0, 48, 24)
+        }
+        container.addView(subtitleView)
+
+        // 3. 列表 (RecyclerView)
+        val recyclerView = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@SearchActivity)
+            // 使用下面定义的 StationSelectionAdapter
+            adapter = StationSelectionAdapter(stations) { selectedStation ->
+                bottomSheetDialog.dismiss()
+                openStationOptions(selectedStation)
+            }
+        }
+        container.addView(recyclerView)
+
+        bottomSheetDialog.setContentView(container)
+        bottomSheetDialog.show()
     }
+
+    private fun openStationOptions(station: Station) {
+        val officialName = station.name
+        val services = station.services
+
+        if (services.isNotEmpty()) {
+            val bottomSheet = ServiceSelectionBottomSheet(officialName, services) { selectedService ->
+                val intent = Intent(this@SearchActivity, RouteDetailActivity::class.java)
+                intent.putExtra("dest_name", officialName)
+                intent.putExtra("dest_lat", station.latitude)
+                intent.putExtra("dest_lng", station.longitude)
+                intent.putExtra("service_name", selectedService.name)
+                startActivity(intent)
+            }
+            bottomSheet.show(supportFragmentManager, "ServiceSelection")
+        } else {
+            Toast.makeText(this, "Station found but no services configured.", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+// 🔥🔥 新增：专用的 Adapter，用于显示整齐的车站列表 🔥🔥
+class StationSelectionAdapter(
+    private val stations: List<Pair<Station, Float>>,
+    private val onClick: (Station) -> Unit
+) : RecyclerView.Adapter<StationSelectionAdapter.ViewHolder>() {
+
+    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val tvName: TextView = view.findViewById(R.id.tvStationName)
+        val tvDist: TextView = view.findViewById(R.id.tvStationDist)
+        // val ivIcon: ImageView = view.findViewById(R.id.ivIcon) // 可选：如果需要动态改图标
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        // 加载我们在 Step 1 创建的 XML
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_busstation_selection, parent, false)
+        return ViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        val (station, distance) = stations[position]
+
+        holder.tvName.text = station.name
+        // 格式化距离： "📍 120m away"
+        holder.tvDist.text = String.format("📍 %.0fm away", distance)
+
+        holder.itemView.setOnClickListener {
+            onClick(station)
+        }
+    }
+
+    override fun getItemCount() = stations.size
 }
