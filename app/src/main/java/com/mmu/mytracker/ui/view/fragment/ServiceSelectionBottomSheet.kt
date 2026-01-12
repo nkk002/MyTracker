@@ -31,31 +31,45 @@ class ServiceSelectionBottomSheet(
 
         val recyclerView = view.findViewById<RecyclerView>(R.id.rvServices)
         recyclerView.layoutManager = LinearLayoutManager(context)
-        // 使用简单的 Adapter (这里写个内部类简化代码)
+
+        // 使用简单的 Adapter
         recyclerView.adapter = ServiceAdapter(services) { service ->
             onServiceSelected(service)
             dismiss() // 选中后关闭弹窗
         }
     }
 
-    // 简单的内部 Adapter
+    // 内部 Adapter 类
     class ServiceAdapter(
         private val list: List<StationService>,
         private val onClick: (StationService) -> Unit
     ) : RecyclerView.Adapter<ServiceAdapter.VH>() {
+
         class VH(v: View) : RecyclerView.ViewHolder(v) {
-            val text: TextView = v.findViewById(android.R.id.text1)
+            // 🔥 修正：使用 R.id.text1 (对应 item_service_multiline.xml 里的 ID)
+            // 之前写 android.R.id.text1 是错的，因为我们用了自定义 XML
+            val text: TextView = v.findViewById(R.id.text1)
         }
+
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            // 加载支持多行的布局
             val v = LayoutInflater.from(parent.context)
-                .inflate(android.R.layout.simple_list_item_1, parent, false)
+                .inflate(R.layout.item_service_multiline, parent, false)
             return VH(v)
         }
+
         override fun onBindViewHolder(holder: VH, position: Int) {
             val item = list[position]
-            holder.text.text = "🚆 ${item.name} (${item.direction})"
+
+            // 优化显示：如果有方向才显示括号，没有就不显示
+            val directionInfo = if (item.direction.isNotEmpty()) " (${item.direction})" else ""
+
+            // 例如: "🚆 Bus T460 (To Kajang)"
+            holder.text.text = "🚆 ${item.name}$directionInfo"
+
             holder.itemView.setOnClickListener { onClick(item) }
         }
+
         override fun getItemCount() = list.size
     }
 }

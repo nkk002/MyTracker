@@ -156,7 +156,7 @@ class SearchActivity : AppCompatActivity() {
             }
 
             val nearbyStations = mutableListOf<Pair<Station, Float>>()
-            val MATCH_THRESHOLD_METERS = 250f // 搜索半径 500米
+            val MATCH_THRESHOLD_METERS = 350f // 搜索半径 500米
 
             for (station in allStations) {
                 val stationLocation = Location("firestore_station").apply {
