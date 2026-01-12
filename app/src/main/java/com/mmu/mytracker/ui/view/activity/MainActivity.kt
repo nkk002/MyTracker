@@ -1,6 +1,7 @@
 package com.mmu.mytracker.ui.view.activity
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -13,9 +14,11 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.location.*
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -48,10 +51,21 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private var currentDestinationMarker: Marker? = null
     private var currentRouteLine: Polyline? = null
 
-    // 🔥 状态控制
     private var isRouteFetched = false
-    // 🔥 新增：记录上一次的目标车站，用于检测任务是否变更
     private var lastStationName: String? = null
+
+    // 🔥 新增：权限请求回调
+    // 当用户在弹窗点击 "Allow" 后，这个代码块会自动运行
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            // 用户刚点了允许，马上开启定位功能！
+            enableMyLocation()
+        } else {
+            Toast.makeText(this, "Location permission is required to show your position", Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,7 +114,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onResume() {
         super.onResume()
-
         if (intent.getBooleanExtra("GO_TO_HOME", false)) {
             val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
             if (bottomNav.selectedItemId != R.id.nav_home) {
@@ -108,30 +121,22 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             }
             intent.removeExtra("GO_TO_HOME")
         }
-
         checkActiveTracking()
     }
 
-    // 🔥 修改：检查任务时，如果车站变了，就重置状态
     private fun checkActiveTracking() {
         val route = ActiveRouteManager.getRoute(this)
 
         if (route != null) {
             val currentStationName = route["destName"] as? String ?: "Unknown Station"
 
-            // 如果发现这次的车站名字和上次不一样，说明换了目的地
             if (currentStationName != lastStationName) {
-                // 1. 重置 API 请求标记，让 updateTrackingLogic 重新画线
                 isRouteFetched = false
                 lastStationName = currentStationName
-
-                // 2. 清除旧地图元素
                 currentRouteLine?.remove()
                 currentRouteLine = null
                 currentDestinationMarker?.remove()
                 currentDestinationMarker = null
-
-                // 3. 重置时间显示
                 tvEta.text = "-- min"
             }
 
@@ -141,7 +146,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         } else {
             cardTracking.visibility = View.GONE
             stopLocationUpdates()
-            lastStationName = null // 清空记录
+            lastStationName = null
         }
     }
 
@@ -155,7 +160,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         currentRouteLine?.remove()
         currentRouteLine = null
 
-        // 重置状态
         isRouteFetched = false
         lastStationName = null
 
@@ -164,34 +168,39 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onMapReady(googleMap: GoogleMap) {
         map = googleMap
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            map.isMyLocationEnabled = true
 
-            if (ActiveRouteManager.getRoute(this) == null) {
-                getDeviceLocation()
-            }
+        // 🔥 修改：检查权限，如果没给就请求，如果给了就直接开启
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            enableMyLocation()
+        } else {
+            // 请求权限 (这会弹窗)
+            requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
+
         checkActiveTracking()
     }
 
-    private fun getDeviceLocation() {
-        try {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                val locationResult = fusedLocationClient.lastLocation
-                locationResult.addOnCompleteListener(this) { task ->
-                    if (task.isSuccessful) {
-                        val lastKnownLocation = task.result
-                        if (lastKnownLocation != null) {
-                            map.moveCamera(CameraUpdateFactory.newLatLngZoom(
-                                LatLng(lastKnownLocation.latitude, lastKnownLocation.longitude),
-                                15f
-                            ))
-                        }
-                    }
+    // 🔥 新增：封装开启定位图层的逻辑
+    @SuppressLint("MissingPermission")
+    private fun enableMyLocation() {
+        // 1. 开启蓝色小圆点
+        map.isMyLocationEnabled = true
+        // 2. 开启“回到定位”按钮 (右上角的瞄准镜)
+        map.uiSettings.isMyLocationButtonEnabled = true
+
+        // 3. 尝试获取一次位置并移动镜头 (解决大海中央问题)
+        // 只有当没有正在进行的导航任务时才移动，避免打断用户的导航视角
+        if (ActiveRouteManager.getRoute(this) == null) {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                if (location != null) {
+                    val currentLatLng = LatLng(location.latitude, location.longitude)
+                    map.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 15f))
+                } else {
+                    // 如果真机 GPS 还没热身完 (返回 null)，可以先移到吉隆坡作为一个默认点，别留在大海里
+                    // val defaultKL = LatLng(3.1390, 101.6869)
+                    // map.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultKL, 10f))
                 }
             }
-        } catch (e: SecurityException) {
-            e.printStackTrace()
         }
     }
 
@@ -246,7 +255,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 map.animateCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, 15f))
             }
 
-            // 🔥 只有当路线没画过（或者被重置过）才请求 API
             if (!isRouteFetched) {
                 fetchAndDrawRoute(userLatLng, destLatLng)
             }
