@@ -126,7 +126,7 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
         if (!isAdded) return
 
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, data)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        adapter.setDropDownViewResource(R.layout.item_spinner_multiline)
         spinnerStation.adapter = adapter
     }
 
