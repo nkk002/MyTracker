@@ -13,30 +13,39 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:text="Crowdsource Report"
+            android:textColor="@color/black"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
             android:text="Select Line/Service"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp"/>
+            android:textStyle="bold" />
 
         <Spinner
             android:id="@+id/spinnerLine"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:background="@android:drawable/btn_dropdown"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="16dp"
+            android:background="@android:drawable/btn_dropdown" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
             android:text="Select Station (Optional)"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp"/>
+            android:textStyle="bold" />
 
         <Spinner
             android:id="@+id/spinnerStation"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:background="@android:drawable/btn_dropdown"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="16dp"
+            android:background="@android:drawable/btn_dropdown" />
 
         <TextView
             android:layout_width="match_parent"
@@ -49,30 +58,30 @@
             android:id="@+id/radioGroupCrowd"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="16dp">
+            android:layout_marginBottom="16dp"
+            android:orientation="horizontal">
 
             <RadioButton
                 android:id="@+id/rbLow"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Low"
-                android:checked="true"/>
+                android:checked="true"
+                android:text="Low" />
 
             <RadioButton
                 android:id="@+id/rbMedium"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Medium"/>
+                android:text="Medium" />
 
             <RadioButton
                 android:id="@+id/rbHigh"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="High"/>
+                android:text="High" />
         </RadioGroup>
 
         <TextView
@@ -113,7 +122,7 @@
             android:layout_height="wrap_content"
             android:backgroundTint="#2196F3"
             android:text="Submit report"
-            android:textColor="@android:color/white"/>
+            android:textColor="@android:color/white" />
 
     </LinearLayout>
 </ScrollView>
