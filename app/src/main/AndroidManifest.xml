@@ -32,6 +32,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".ui.view.activity.SearchActivity" />
+        <activity android:name=".ui.view.activity.FeedbackActivity" />
         <activity android:name=".ui.view.activity.RouteDetailActivity"
             android:exported="false" />
     </application>

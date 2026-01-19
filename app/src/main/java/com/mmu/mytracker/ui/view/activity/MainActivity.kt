@@ -375,6 +375,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                     ReportBottomSheetFragment().show(supportFragmentManager, "ReportBottomSheet")
                     false
                 }
+                R.id.nav_feedback -> {
+                    // 跳转到你刚刚创建的 FeedbackActivity
+                    val intent = Intent(this, FeedbackActivity::class.java)
+                    startActivity(intent)
+                    false // 返回 false，表示这个按钮不会变成“选中状态” (通常跳转新页面不需要选中效果)
+                }
                 else -> false
             }
         }
