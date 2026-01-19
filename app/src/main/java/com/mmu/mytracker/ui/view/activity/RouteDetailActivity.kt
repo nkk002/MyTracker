@@ -44,13 +44,10 @@ class RouteDetailActivity : AppCompatActivity() {
         destLat = intent.getDoubleExtra("dest_lat", 0.0)
         destLng = intent.getDoubleExtra("dest_lng", 0.0)
 
-        // UI 初始化
         findViewById<TextView>(R.id.tvHeaderTitle).text = destName
         findViewById<TextView>(R.id.tvServiceName).text = serviceName
 
-        // 🔥 新增：动态修改标题 (Next Train -> Next Bus)
         val tvNextTrainLabel = findViewById<TextView>(R.id.tvNextTrainLabel)
-        // 检查服务名字里有没有 "Bus" (忽略大小写)
         if (serviceName.contains("Bus", ignoreCase = true)) {
             tvNextTrainLabel.text = "Next Bus"
         } else {
@@ -68,17 +65,14 @@ class RouteDetailActivity : AppCompatActivity() {
             finish()
         }
 
-        // 初始化 RecyclerView
         recyclerAlerts = findViewById(R.id.recyclerAlerts)
         recyclerAlerts.layoutManager = LinearLayoutManager(this)
         alertAdapter = AlertAdapter(emptyList())
         recyclerAlerts.adapter = alertAdapter
 
-        // 启动逻辑
         startListeningForAlerts(serviceName, destName)
         fetchStationDetailsAndCalculateTime(destName, serviceName)
 
-        // 启动每分钟刷新一次 UI
         startAutoRefreshAdapter()
     }
 
@@ -101,7 +95,6 @@ class RouteDetailActivity : AppCompatActivity() {
                 val station = allStations.find { it.name == stationName }
 
                 if (station != null) {
-                    // 模糊匹配服务名 (例如 "Bus T460" 匹配 "Bus")
                     val service = station.services.find {
                         it.name.contains(serviceName, ignoreCase = true) ||
                                 serviceName.contains(it.name, ignoreCase = true) ||
@@ -144,7 +137,7 @@ class RouteDetailActivity : AppCompatActivity() {
                         }
 
                     } else {
-                        tvTrain1Count.text = "--" // 没找到该服务
+                        tvTrain1Count.text = "--"
                     }
                 }
             } catch (e: Exception) {
@@ -156,7 +149,6 @@ class RouteDetailActivity : AppCompatActivity() {
 
     private fun startListeningForAlerts(userSelectedLine: String, currentStationName: String) {
         lifecycleScope.launch {
-            // 注意：如果是 Bus，这里可能需要传入具体的 Service Name 作为 Line
             transportRepository.observeRealTimeReports(userSelectedLine).collect { allReports ->
                 val relevantReports = allReports.filter { report ->
                     val station = report["station"] as? String ?: "General"

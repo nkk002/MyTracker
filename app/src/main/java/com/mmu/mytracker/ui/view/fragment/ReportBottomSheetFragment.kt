@@ -26,10 +26,8 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
     private lateinit var btnSubmit: Button
     private lateinit var etDelayTime: EditText
 
-    // 定义线路选项
     private val lines = listOf("Select Line", "MRT Kajang Line", "MRT Putrajaya Line","Bus T460")
 
-    // 缓存所有车站数据
     private var allStationsCache: List<com.mmu.mytracker.data.model.Station> = emptyList()
 
     override fun onCreateView(
@@ -42,7 +40,6 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // 1. 绑定 Views
         spinnerLine = view.findViewById(R.id.spinnerLine)
         spinnerStation = view.findViewById(R.id.spinnerStation)
         radioGroup = view.findViewById(R.id.radioGroupCrowd)
@@ -50,13 +47,8 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
         btnSubmit = view.findViewById(R.id.btnSubmitReport)
         etDelayTime = view.findViewById(R.id.etDelayTime)
 
-        // 2. 初始化 Line Spinner
         setupLineSpinner()
-
-        // 3. 预加载车站数据 (这样用户点选时不用等)
         fetchAllStations()
-
-        // 4. 提交按钮点击事件
         btnSubmit.setOnClickListener {
             submitReport()
         }
@@ -67,16 +59,13 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinnerLine.adapter = adapter
 
-        // 监听 Line 选择事件
         spinnerLine.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selectedLine = lines[position]
 
-                // 如果选了具体线路，就去过滤车站
                 if (selectedLine != "Select Line") {
                     filterStationsByLine(selectedLine)
                 } else {
-                    // 如果选回了默认，清空或重置车站列表
                     resetStationSpinner()
                 }
             }
@@ -85,14 +74,12 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
         }
     }
 
-    // 🔥 核心逻辑：根据选中的 Line 过滤 Station
     private fun filterStationsByLine(selectedLine: String) {
         if (allStationsCache.isEmpty()) return
 
-        // 1. 确定过滤关键字 (简化匹配逻辑)
         val keyword = when (selectedLine) {
-            "MRT Kajang Line" -> "Kajang"     // 只要服务名包含 Kajang
-            "MRT Putrajaya Line" -> "Putrajaya" // 只要服务名包含 Putrajaya
+            "MRT Kajang Line" -> "Kajang"
+            "MRT Putrajaya Line" -> "Putrajaya"
             "Bus T460" -> "T460"
             else -> ""
         }
@@ -101,18 +88,14 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
 
         // 2. 筛选车站
         val filteredNames = allStationsCache.filter { station ->
-            // 检查该车站的 services 列表里，有没有名字包含关键字的
             station.services.any { service ->
                 service.name.contains(keyword, ignoreCase = true) ||
                         service.type.contains(keyword, ignoreCase = true)
             }
-        }.map { it.name }.sorted() // 提取名字并排序
-
-        // 3. 添加一个默认选项 "General (Whole Line)"
+        }.map { it.name }.sorted()
         val finalStationList = mutableListOf("General (Whole Line)")
         finalStationList.addAll(filteredNames)
 
-        // 4. 更新 Station Spinner
         updateStationSpinner(finalStationList)
     }
 
@@ -122,7 +105,6 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
     }
 
     private fun updateStationSpinner(data: List<String>) {
-        // 确保 Fragment 还在才更新 UI
         if (!isAdded) return
 
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, data)
@@ -133,13 +115,11 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
     private fun fetchAllStations() {
         lifecycleScope.launch {
             try {
-                // 在后台线程加载数据
                 val stations = withContext(Dispatchers.IO) {
                     stationRepository.getAllStations()
                 }
                 allStationsCache = stations
 
-                // 数据加载完后，如果用户已经选了线路，立即刷新一次
                 val currentLine = spinnerLine.selectedItem.toString()
                 if (currentLine != "Select Line") {
                     filterStationsByLine(currentLine)
@@ -147,7 +127,6 @@ class ReportBottomSheetFragment : BottomSheetDialogFragment() {
 
             } catch (e: Exception) {
                 e.printStackTrace()
-                // 如果失败，可以给 allStationsCache 一个空列表防止崩溃
             }
         }
     }

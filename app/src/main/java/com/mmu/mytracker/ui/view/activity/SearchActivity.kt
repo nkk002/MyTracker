@@ -108,7 +108,6 @@ class SearchActivity : AppCompatActivity() {
             .setName(recentPlace.name)
             .setAddress(recentPlace.address)
             .setLatLng(com.google.android.gms.maps.model.LatLng(recentPlace.lat, recentPlace.lng))
-            // .setPlaceTypes(listOf("transit_station")) // 不需要强制设置类型了
             .build()
 
         handleSelectedPlace(fakePlace)
@@ -140,9 +139,6 @@ class SearchActivity : AppCompatActivity() {
         val userLat = place.latLng?.latitude ?: 0.0
         val userLng = place.latLng?.longitude ?: 0.0
 
-        // ❌ 之前的 "isTransportRelated" 检查代码已被移除，
-        // 现在的逻辑是：只要用户选了一个地点，就直接去附近 500m 搜车站。
-
         lifecycleScope.launch {
             Toast.makeText(this@SearchActivity, "Finding stations near $googlePlaceName...", Toast.LENGTH_SHORT).show()
 
@@ -156,7 +152,7 @@ class SearchActivity : AppCompatActivity() {
             }
 
             val nearbyStations = mutableListOf<Pair<Station, Float>>()
-            val MATCH_THRESHOLD_METERS = 350f // 搜索半径 500米
+            val MATCH_THRESHOLD_METERS = 350f
 
             for (station in allStations) {
                 val stationLocation = Location("firestore_station").apply {
@@ -170,19 +166,15 @@ class SearchActivity : AppCompatActivity() {
                 }
             }
 
-            // 按距离排序
             nearbyStations.sortBy { it.second }
 
             if (nearbyStations.isNotEmpty()) {
                 if (nearbyStations.size == 1) {
-                    // 只有一个结果，直接打开
                     openStationOptions(nearbyStations[0].first)
                 } else {
-                    // 有多个结果，显示 BottomSheet 让用户选
                     showStationChooserDialog(nearbyStations)
                 }
 
-                // 保存历史记录
                 val recent = RecentPlace(googlePlaceName, place.address ?: "", userLat, userLng)
                 historyManager.savePlace(recent)
 
@@ -192,18 +184,15 @@ class SearchActivity : AppCompatActivity() {
         }
     }
 
-    // ✅ 优化后的 BottomSheet 弹窗
     private fun showStationChooserDialog(stations: List<Pair<Station, Float>>) {
         val bottomSheetDialog = BottomSheetDialog(this)
 
-        // 动态创建布局容器
         val container = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setPadding(0, 32, 0, 32)
             background = androidx.core.content.ContextCompat.getDrawable(context, android.R.color.white)
         }
 
-        // 1. 标题
         val titleView = TextView(this).apply {
             text = "Select Station"
             textSize = 20f
@@ -213,7 +202,6 @@ class SearchActivity : AppCompatActivity() {
         }
         container.addView(titleView)
 
-        // 2. 副标题
         val subtitleView = TextView(this).apply {
             text = "Multiple stations found nearby. Please choose the correct one:"
             textSize = 14f
@@ -222,10 +210,8 @@ class SearchActivity : AppCompatActivity() {
         }
         container.addView(subtitleView)
 
-        // 3. 列表 (RecyclerView)
         val recyclerView = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@SearchActivity)
-            // 使用下面定义的 StationSelectionAdapter
             adapter = StationSelectionAdapter(stations) { selectedStation ->
                 bottomSheetDialog.dismiss()
                 openStationOptions(selectedStation)
@@ -257,7 +243,6 @@ class SearchActivity : AppCompatActivity() {
     }
 }
 
-// ✅ 优化后的 Adapter：使用 item_station_selection.xml 布局
 class StationSelectionAdapter(
     private val stations: List<Pair<Station, Float>>,
     private val onClick: (Station) -> Unit
@@ -266,11 +251,9 @@ class StationSelectionAdapter(
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvName: TextView = view.findViewById(R.id.tvStationName)
         val tvDist: TextView = view.findViewById(R.id.tvStationDist)
-        // val ivIcon: ImageView = view.findViewById(R.id.ivIcon)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        // 🔥 加载 item_station_selection.xml
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_busstation_selection, parent, false)
         return ViewHolder(view)
@@ -280,7 +263,6 @@ class StationSelectionAdapter(
         val (station, distance) = stations[position]
 
         holder.tvName.text = station.name
-        // 格式化距离： "📍 120m away"
         holder.tvDist.text = String.format("📍 %.0fm away", distance)
 
         holder.itemView.setOnClickListener {

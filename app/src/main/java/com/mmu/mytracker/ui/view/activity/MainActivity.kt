@@ -39,14 +39,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var map: GoogleMap
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
-    // Tracking UI 变量
     private lateinit var cardTracking: CardView
     private lateinit var tvStationName: TextView
     private lateinit var tvDistance: TextView
     private lateinit var tvEta: TextView
     private lateinit var btnClose: ImageButton
 
-    // Tracking 状态变量
     private var locationCallback: LocationCallback? = null
     private var currentDestinationMarker: Marker? = null
     private var currentRouteLine: Polyline? = null
@@ -54,13 +52,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private var isRouteFetched = false
     private var lastStationName: String? = null
 
-    // 🔥 新增：权限请求回调
-    // 当用户在弹窗点击 "Allow" 后，这个代码块会自动运行
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
-            // 用户刚点了允许，马上开启定位功能！
             enableMyLocation()
         } else {
             Toast.makeText(this, "Location permission is required to show your position", Toast.LENGTH_LONG).show()
@@ -169,34 +164,26 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onMapReady(googleMap: GoogleMap) {
         map = googleMap
 
-        // 🔥 修改：检查权限，如果没给就请求，如果给了就直接开启
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             enableMyLocation()
         } else {
-            // 请求权限 (这会弹窗)
             requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
         checkActiveTracking()
     }
 
-    // 🔥 新增：封装开启定位图层的逻辑
     @SuppressLint("MissingPermission")
     private fun enableMyLocation() {
-        // 1. 开启蓝色小圆点
         map.isMyLocationEnabled = true
-        // 2. 开启“回到定位”按钮 (右上角的瞄准镜)
         map.uiSettings.isMyLocationButtonEnabled = true
 
-        // 3. 尝试获取一次位置并移动镜头 (解决大海中央问题)
-        // 只有当没有正在进行的导航任务时才移动，避免打断用户的导航视角
         if (ActiveRouteManager.getRoute(this) == null) {
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                 if (location != null) {
                     val currentLatLng = LatLng(location.latitude, location.longitude)
                     map.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 15f))
                 } else {
-                    // 如果真机 GPS 还没热身完 (返回 null)，可以先移到吉隆坡作为一个默认点，别留在大海里
                     // val defaultKL = LatLng(3.1390, 101.6869)
                     // map.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultKL, 10f))
                 }
@@ -376,10 +363,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                     false
                 }
                 R.id.nav_feedback -> {
-                    // 跳转到你刚刚创建的 FeedbackActivity
                     val intent = Intent(this, FeedbackActivity::class.java)
                     startActivity(intent)
-                    false // 返回 false，表示这个按钮不会变成“选中状态” (通常跳转新页面不需要选中效果)
+                    false
                 }
                 else -> false
             }

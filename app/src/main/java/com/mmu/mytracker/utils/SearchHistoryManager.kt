@@ -11,11 +11,9 @@ class SearchHistoryManager(context: Context) {
 
     fun savePlace(place: RecentPlace) {
         val history = getHistory().toMutableList()
-        // 避免重复：如果已经有了，先删掉旧的，再加新的到最前面
         history.removeAll { it.name == place.name }
         history.add(0, place)
 
-        // 只保留最近 10 条
         if (history.size > 10) {
             history.removeAt(history.lastIndex)
         }
@@ -25,7 +23,6 @@ class SearchHistoryManager(context: Context) {
 
     fun removePlace(placeToRemove: RecentPlace) {
         val currentList = getHistory().toMutableList()
-        // 根据名字和地址移除
         currentList.removeAll { it.name == placeToRemove.name && it.address == placeToRemove.address }
 
         saveList(currentList)

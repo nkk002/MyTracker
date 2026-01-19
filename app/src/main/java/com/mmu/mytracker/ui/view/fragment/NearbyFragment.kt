@@ -41,14 +41,13 @@ class NearbyFragment : Fragment() {
 
     private var selectedType = "MRT"
 
-    // 缓存变量 (用来存下载好的车站，防止重复下载)
     private var cachedAllStations: List<Station>? = null
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
-            refreshData(showLoading = true) // 首次加载显示 Loading
+            refreshData(showLoading = true)
         } else {
             Toast.makeText(context, "Location needed for nearby stations", Toast.LENGTH_SHORT).show()
             progressBar.visibility = View.GONE
@@ -71,7 +70,6 @@ class NearbyFragment : Fragment() {
         toggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (isChecked) {
                 selectedType = if (checkedId == R.id.btnSelectMrt) "MRT" else "BUS"
-                // 切换类型时，马上刷新一次
                 refreshData(showLoading = false)
             }
         }
@@ -82,16 +80,13 @@ class NearbyFragment : Fragment() {
             requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
-        // 启动自动刷新循环 (每 30 秒刷新一次)
         startAutoRefreshLoop()
     }
 
-    // 自动刷新逻辑
     private fun startAutoRefreshLoop() {
         lifecycleScope.launch {
-            while (isActive) { // 只要页面还在，就一直跑
-                delay(30000) // 等待 30 秒
-                // 静默刷新 (不转圈圈)
+            while (isActive) {
+                delay(30000)
                 if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                     refreshData(showLoading = false)
                 }
@@ -106,7 +101,6 @@ class NearbyFragment : Fragment() {
             intent.putExtra("dest_lat", station.latitude)
             intent.putExtra("dest_lng", station.longitude)
 
-            // 传递精准的服务名字
             val targetService = station.services.find { it.type.equals(selectedType, ignoreCase = true) }
             val exactServiceName = targetService?.name ?: "$selectedType Service"
             intent.putExtra("service_name", exactServiceName)
@@ -119,7 +113,6 @@ class NearbyFragment : Fragment() {
 
     @SuppressLint("MissingPermission")
     private fun refreshData(showLoading: Boolean) {
-        // 只有在强制要求时才显示 Loading，自动刷新时不显示
         if (showLoading) progressBar.visibility = View.VISIBLE
 
         val fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity())
@@ -141,19 +134,16 @@ class NearbyFragment : Fragment() {
     private fun calculateNearbyStations(userLocation: Location) {
         lifecycleScope.launch {
             try {
-                // 智能获取数据：如果有缓存，直接用缓存；没有才去下载
                 val allStations = if (cachedAllStations != null) {
-                    cachedAllStations!! // 使用缓存
+                    cachedAllStations!!
                 } else {
-                    // 没有缓存，去 Firestore 下载
                     val fetched = withContext(Dispatchers.IO) {
                         stationRepository.getAllStations()
                     }
-                    cachedAllStations = fetched // 存入缓存
+                    cachedAllStations = fetched
                     fetched
                 }
 
-                // 筛选 + 计算时间
                 val filteredList = allStations.filter { station ->
                     station.services.any { it.type.equals(selectedType, ignoreCase = true) }
                 }
@@ -169,7 +159,6 @@ class NearbyFragment : Fragment() {
                         val infoText = if (matchingService != null) {
                             val distKm = "%.2f km".format(distance / 1000)
 
-                            // 🔥 核心修改：这里加入了 offset_min，确保和 RouteDetailActivity 的时间一致
                             val mins = TimeUtils.getMinutesUntilNextTrain(
                                 matchingService.first_train,
                                 matchingService.frequency_min,
@@ -191,9 +180,7 @@ class NearbyFragment : Fragment() {
                 adapter.updateData(finalData)
 
             } catch (e: Exception) {
-                // 出错时不弹 Toast 干扰自动刷新
                 if (progressBar.visibility == View.VISIBLE) {
-                    // Log.e("Nearby", "Error", e)
                 }
             } finally {
                 progressBar.visibility = View.GONE

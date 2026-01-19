@@ -35,16 +35,13 @@ class AlertAdapter(private var alerts: List<Map<String, Any>>) :
         val delay = report["delayTime"] as? String ?: "0"
         val timestamp = report["timestamp"] as? Long ?: System.currentTimeMillis()
 
-        // 1. 设置标题
         val displayStation = if (station.contains("General")) "Whole Line" else station
         holder.tvTitle.text = "⚠️ $type ($displayStation)"
 
-        // 2. 设置时间 (比如 5 mins ago)
         val diffMillis = System.currentTimeMillis() - timestamp
         val minsAgo = diffMillis / (1000 * 60)
         holder.tvTime.text = if (minsAgo < 1) "Now" else "${minsAgo}m ago"
 
-        // 3. 设置内容 (Bold Delay)
         if (delay != "0") {
             val builder = SpannableStringBuilder()
             builder.append(comment)

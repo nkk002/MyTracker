@@ -12,13 +12,13 @@ import com.mmu.mytracker.data.model.RecentPlace
 class RecentSearchAdapter(
     private var historyList: MutableList<RecentPlace>,
     private val onItemClick: (RecentPlace) -> Unit,
-    private val onDeleteClick: (RecentPlace) -> Unit // 🔥 新增删除回调
+    private val onDeleteClick: (RecentPlace) -> Unit
 ) : RecyclerView.Adapter<RecentSearchAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvName: TextView = view.findViewById(R.id.tvPlaceName)
         val tvAddress: TextView = view.findViewById(R.id.tvPlaceAddress)
-        val btnDelete: ImageButton = view.findViewById(R.id.btnDelete) // 🔥 绑定删除按钮
+        val btnDelete: ImageButton = view.findViewById(R.id.btnDelete)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -32,12 +32,10 @@ class RecentSearchAdapter(
         holder.tvName.text = place.name
         holder.tvAddress.text = place.address
 
-        // 点击整行 -> 跳转
         holder.itemView.setOnClickListener {
             onItemClick(place)
         }
 
-        // 点击删除按钮 -> 删除
         holder.btnDelete.setOnClickListener {
             onDeleteClick(place)
         }
@@ -45,7 +43,6 @@ class RecentSearchAdapter(
 
     override fun getItemCount() = historyList.size
 
-    // 更新列表数据
     fun updateData(newList: List<RecentPlace>) {
         historyList = newList.toMutableList()
         notifyDataSetChanged()
