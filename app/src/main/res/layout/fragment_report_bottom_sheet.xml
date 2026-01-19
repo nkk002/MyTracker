@@ -20,16 +20,17 @@
             android:textStyle="bold" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="152dp"
+            android:layout_height="29dp"
             android:layout_marginBottom="8dp"
             android:text="Select Line/Service"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <Spinner
             android:id="@+id/spinnerLine"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="62dp"
             android:layout_marginBottom="16dp"
             android:background="@android:drawable/btn_dropdown" />
 
@@ -37,13 +38,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
-            android:text="Select Station (Optional)"
+            android:text="Select Station"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <Spinner
             android:id="@+id/spinnerStation"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="62dp"
             android:layout_marginBottom="16dp"
             android:background="@android:drawable/btn_dropdown" />
 
@@ -52,6 +54,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
             android:text="Crowd Level"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <RadioGroup
@@ -67,6 +70,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:checked="true"
+                android:textSize="15sp"
                 android:text="Low" />
 
             <RadioButton
@@ -74,6 +78,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:textSize="15sp"
                 android:text="Medium" />
 
             <RadioButton
@@ -81,6 +86,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:textSize="15sp"
                 android:text="High" />
         </RadioGroup>
 
@@ -89,6 +95,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
             android:text="Estimate Delay Time (Minute)"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <EditText
@@ -105,6 +112,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
             android:text="Other Comment"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <EditText

@@ -25,7 +25,7 @@ class ReportFragment : Fragment() {
     private lateinit var etComment: EditText
     private lateinit var btnSubmit: Button
     private lateinit var etDelayTime: EditText
-
+    
     private val lines = listOf("Select Line", "MRT Kajang Line", "MRT Putrajaya Line", "Bus T460")
     private var allStationsCache: List<com.mmu.mytracker.data.model.Station> = emptyList()
 
@@ -54,14 +54,23 @@ class ReportFragment : Fragment() {
     }
 
     private fun setupSpinners() {
-        val adapterLine = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, lines)
-        adapterLine.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val adapterLine = ArrayAdapter(requireContext(), R.layout.item_spinner_multiline, lines)
         spinnerLine.adapter = adapterLine
+
+        val defaultStationList = listOf("Select Line First")
+        val defaultStationAdapter = ArrayAdapter(requireContext(), R.layout.item_spinner_multiline, defaultStationList)
+        spinnerStation.adapter = defaultStationAdapter
+        spinnerStation.isEnabled = false
 
         spinnerLine.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selectedLine = lines[position]
-                if (selectedLine != "Select Line") {
+
+                if (selectedLine == "Select Line") {
+                    spinnerStation.adapter = defaultStationAdapter
+                    spinnerStation.isEnabled = false
+                } else {
+                    spinnerStation.isEnabled = true
                     filterStationsByLine(selectedLine)
                 }
             }
@@ -81,24 +90,37 @@ class ReportFragment : Fragment() {
     }
 
     private fun filterStationsByLine(line: String) {
-        val filteredStations = allStationsCache.filter {
-            true
-        }.map { it.name }
 
-        val stationList = mutableListOf("Select Station")
-        stationList.addAll(filteredStations)
+        val filteredStations = allStationsCache.filter { station ->
+            station.services.any { service ->
+                service.name.equals(line, ignoreCase = true)
+            }
+        }.map { it.name }.sorted()
 
-        val adapterStation = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, stationList)
-        adapterStation.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val stationList = mutableListOf<String>()
+
+        if (filteredStations.isEmpty()) {
+            stationList.add("No stations found for this line")
+        } else {
+            stationList.add("Select Station")
+            stationList.addAll(filteredStations)
+        }
+
+        val adapterStation = ArrayAdapter(requireContext(), R.layout.item_spinner_multiline, stationList)
         spinnerStation.adapter = adapterStation
     }
 
     private fun submitReport() {
-        val line = spinnerLine.selectedItem.toString()
-        val station = spinnerStation.selectedItem?.toString() ?: "General"
+        val line = spinnerLine.selectedItem?.toString() ?: "Select Line"
+        val station = spinnerStation.selectedItem?.toString() ?: "Select Station"
 
         if (line == "Select Line") {
             Toast.makeText(context, "Please select a transport line", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (station == "Select Station" || station == "Select Line First" || station == "No stations found for this line") {
+            Toast.makeText(context, "Please select a valid station", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -118,6 +140,7 @@ class ReportFragment : Fragment() {
                 Toast.makeText(context, "Report submitted successfully!", Toast.LENGTH_SHORT).show()
                 etComment.text.clear()
                 etDelayTime.text.clear()
+                spinnerLine.setSelection(0)
             } else {
                 Toast.makeText(context, "Failed to submit report", Toast.LENGTH_SHORT).show()
             }
