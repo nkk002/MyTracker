@@ -31,6 +31,8 @@ import com.mmu.mytracker.R
 import com.mmu.mytracker.data.remote.api.RetrofitInstance
 import com.mmu.mytracker.ui.view.fragment.NearbyFragment
 import com.mmu.mytracker.ui.view.fragment.ReportBottomSheetFragment
+import com.mmu.mytracker.ui.view.fragment.ReportFragment
+import com.mmu.mytracker.ui.view.fragment.FeedbackFragment
 import com.mmu.mytracker.utils.ActiveRouteManager
 import kotlinx.coroutines.launch
 
@@ -332,43 +334,73 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun setupBottomNavigation() {
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
         val mapFragmentView = findViewById<View>(R.id.mapFragment)
+        val cardTracking = findViewById<CardView>(R.id.cardLiveTracking) // 确保 ID 是 cardLiveTracking
         val fragmentContainer = findViewById<FrameLayout>(R.id.fragment_container)
         val searchCard = findViewById<CardView>(R.id.search_card)
 
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_home -> {
+                    // 显示地图
                     mapFragmentView.visibility = View.VISIBLE
                     searchCard?.visibility = View.VISIBLE
                     fragmentContainer.visibility = View.GONE
+
+                    // 如果正在导航，恢复导航卡片
                     checkActiveTracking()
                     true
                 }
-                R.id.nav_nearby -> {
-                    mapFragmentView.visibility = View.GONE
-                    searchCard?.visibility = View.GONE
-                    cardTracking.visibility = View.GONE
-                    fragmentContainer.visibility = View.VISIBLE
 
-                    val existingFragment = supportFragmentManager.findFragmentByTag("NearbyFragment")
-                    if (existingFragment == null) {
-                        supportFragmentManager.beginTransaction()
-                            .replace(R.id.fragment_container, NearbyFragment(), "NearbyFragment")
-                            .commit()
-                    }
+                R.id.nav_nearby -> {
+                    // 隐藏地图，显示 Fragment 容器
+                    showFragmentContainer(mapFragmentView, searchCard, cardTracking, fragmentContainer)
+
+                    val fragment = supportFragmentManager.findFragmentByTag("NearbyFragment") ?: NearbyFragment()
+                    supportFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, fragment, "NearbyFragment")
+                        .commit()
                     true
                 }
+
                 R.id.nav_report -> {
-                    ReportBottomSheetFragment().show(supportFragmentManager, "ReportBottomSheet")
-                    false
+                    // 隐藏地图，显示 Fragment 容器
+                    showFragmentContainer(mapFragmentView, searchCard, cardTracking, fragmentContainer)
+
+                    // 🔥 修正：使用 ReportFragment (不再是 BottomSheet)
+                    val fragment = supportFragmentManager.findFragmentByTag("ReportFragment") ?: ReportFragment()
+                    supportFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, fragment, "ReportFragment")
+                        .commit()
+                    true
                 }
+
                 R.id.nav_feedback -> {
-                    val intent = Intent(this, FeedbackActivity::class.java)
-                    startActivity(intent)
-                    false
+                    // 隐藏地图，显示 Fragment 容器
+                    showFragmentContainer(mapFragmentView, searchCard, cardTracking, fragmentContainer)
+
+                    // 🔥🔥 修正：这里必须使用 Fragment 切换，而不是 startActivity
+                    val fragment = supportFragmentManager.findFragmentByTag("FeedbackFragment") ?: FeedbackFragment()
+                    supportFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, fragment, "FeedbackFragment")
+                        .commit()
+                    true
                 }
+
                 else -> false
             }
         }
+    }
+
+    // 辅助函数 (如果你还没加的话，加在 setupBottomNavigation 下面)
+    private fun showFragmentContainer(
+        mapView: View,
+        searchCard: View?,
+        trackingCard: View,
+        container: View
+    ) {
+        mapView.visibility = View.GONE
+        searchCard?.visibility = View.GONE
+        trackingCard.visibility = View.GONE
+        container.visibility = View.VISIBLE
     }
 }
