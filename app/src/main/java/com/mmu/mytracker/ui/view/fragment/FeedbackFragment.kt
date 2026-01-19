@@ -5,7 +5,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.ImageButton
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
@@ -26,15 +25,11 @@ class FeedbackFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val btnBack = view.findViewById<ImageButton>(R.id.btnBack)
         val btnSubmit = view.findViewById<Button>(R.id.btnSubmitFeedback)
         val etName = view.findViewById<TextInputEditText>(R.id.etFeedbackName)
         val etEmail = view.findViewById<TextInputEditText>(R.id.etFeedbackEmail)
         val etContent = view.findViewById<TextInputEditText>(R.id.etFeedbackContent)
 
-        btnBack.setOnClickListener {
-            requireActivity().findViewById<BottomNavigationView>(R.id.bottom_navigation).selectedItemId = R.id.nav_home
-        }
 
         btnSubmit.setOnClickListener {
             val content = etContent.text.toString()
