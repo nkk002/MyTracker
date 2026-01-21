@@ -26,7 +26,7 @@ object TimeUtils {
 
             val upcomingTrains = mutableListOf<Long>()
 
-            for (i in 0 until 100) {
+            for (i in 0 until 500) {
                 if (currentStationTrainTime.isAfter(now) || currentStationTrainTime == now) {
                     val minutesUntil = ChronoUnit.MINUTES.between(now, currentStationTrainTime)
                     upcomingTrains.add(minutesUntil)

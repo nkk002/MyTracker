@@ -152,7 +152,7 @@ class SearchActivity : AppCompatActivity() {
             }
 
             val nearbyStations = mutableListOf<Pair<Station, Float>>()
-            val MATCH_THRESHOLD_METERS = 350f
+            val MATCH_THRESHOLD_METERS = 400f
 
             for (station in allStations) {
                 val stationLocation = Location("firestore_station").apply {
